@@ -26,7 +26,7 @@ async function sha256hex(s) {
 }
 
 const G = {
-  token: null, exp: 0, client: null,
+  token: null, exp: 0, client: null, clientId: '',
   SCOPES: 'https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/gmail.send',
   loadLib() {
     if (window.google && google.accounts && google.accounts.oauth2) return Promise.resolve();
@@ -38,20 +38,23 @@ const G = {
   },
   async auth(clientId) {
     if (!clientId) throw new Error('Falta el ID de cliente de Google (Ajustes › Google).');
+    G.clientId = clientId;
     if (G.token && Date.now() < G.exp - 60000) return G.token;
     await G.loadLib();
     return new Promise((res, rej) => {
       G.client = google.accounts.oauth2.initTokenClient({
         client_id: clientId, scope: G.SCOPES,
-        callback: (r) => { if (r.error) return rej(new Error('Google: ' + r.error)); G.token = r.access_token; G.exp = Date.now() + (r.expires_in || 3600) * 1000; res(G.token); },
+        callback: (r) => { if (r.error) return rej(new Error('Google: ' + r.error)); if (!google.accounts.oauth2.hasGrantedAllScopes(r, ...G.SCOPES.split(' '))) { G.forzar = true; return rej(new Error('Falta algún permiso. Vuelve a sincronizar y marca las casillas de Drive y Gmail.')); } G.token = r.access_token; G.exp = Date.now() + (r.expires_in || 3600) * 1000; res(G.token); },
         error_callback: (e) => rej(new Error('Google: ' + (e && e.type || 'cancelado')))
       });
-      G.client.requestAccessToken({ prompt: '' });
+      G.client.requestAccessToken({ prompt: G.forzar ? 'consent' : '' }); G.forzar = false;
     });
   },
   async api(url, opts) {
     opts = opts || {};
     const r = await fetch(url, { ...opts, headers: { Authorization: 'Bearer ' + G.token, ...(opts.headers || {}) } });
+    if (r.status === 401 && !opts._retry) { G.token = null; G.exp = 0; await G.auth(G.clientId); return G.api(url, { ...opts, _retry: true }); }
+    if (r.status === 403 && !opts._retry) { const t = await r.clone().text(); if (/insufficient/i.test(t)) { G.token = null; G.exp = 0; G.forzar = true; await G.auth(G.clientId); return G.api(url, { ...opts, _retry: true }); } }
     if (!r.ok) throw new Error('Google respondió ' + r.status + ': ' + (await r.text()).slice(0, 200));
     return r;
   },
