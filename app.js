@@ -30,7 +30,7 @@ const I = {
   list: '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
   file: '<path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/>',
-  tax: '<path d="M19 5 5 19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/>',
+  tax: '<path d="M7 10v11M17 10v11M7 15.5h10"/><path d="M7 10C4.5 9 3.5 6 4.5 2.5 5.5 5 6.5 6.5 8.5 7.5"/><path d="M17 10c2.5-1 3.5-4 2.5-7.5-1 2.5-2 4-4 5"/>',
   gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
   bell: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
   left: '<path d="m15 18-6-6 6-6"/>', right: '<path d="m9 18 6-6-6-6"/>',
@@ -46,6 +46,28 @@ const I = {
   finger: '<path d="M12 11v3a6 6 0 0 1-1.5 4M8.5 8.8A4 4 0 0 1 16 11v2.5M5.5 15c.6-1.2 1-2.6 1-4a5.5 5.5 0 0 1 9-4.2M18.4 16c.4-1.3.6-2.7.6-4"/>'
 };
 const ico = (k, s) => '<svg aria-hidden="true" width="' + (s || 20) + '" height="' + (s || 20) + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + I[k] + '</svg>';
+
+const CAT_ICO = {
+  gasolina: '<path d="M4 21V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v16M3 21h12M4 10h10"/><path d="M14 8h2a2 2 0 0 1 2 2v6a1.5 1.5 0 0 0 3 0V8l-3-3"/>',
+  vicios: '<path d="M6 4h10v14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2z"/><path d="M16 8h2a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2h-2M9 8v8M13 8v8"/>',
+  comida: '<path d="M4 3v7a3 3 0 0 0 6 0V3M7 3v18M17 21V3c-2 1-3 4-3 7s1 4 3 4"/>',
+  material: '<path d="M9 2v6M15 2v6M6 8h12v3a6 6 0 0 1-12 0zM12 17v5"/>',
+  equipo: '<path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13.5" r="3.5"/>',
+  viajes: '<path d="M10.5 13.5 3 11l1.5-1.5 8 1L17 6a2 2 0 0 1 3 3l-4.5 4.5 1 8L15 23l-2.5-7.5-3 3V21l-1.5 1-1-3-3-1 1-1.5h2.5z"/>',
+  cuota: '<path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z"/><path d="M9 12l2 2 4-4"/>',
+  gestoria: '<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 13h18"/>',
+  software: '<rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M2 20h20M9 9l-2 2 2 2M15 9l2 2-2 2"/>',
+  piso: '<path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/>',
+  fijos: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18M9 15l2 2 4-4"/>',
+  telefono: '<rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/>',
+  taller: '<path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.4-.6-.6-2.4z"/>',
+  varios: '<path d="M6 7h12l1 14H5z"/><path d="M9 10V6a3 3 0 0 1 6 0v4"/>',
+  hacienda: '<path d="M7 10v11M17 10v11M7 15.5h10"/><path d="M7 10C4.5 9 3.5 6 4.5 2.5 5.5 5 6.5 6.5 8.5 7.5"/><path d="M17 10c2.5-1 3.5-4 2.5-7.5-1 2.5-2 4-4 5"/>',
+  perdido: '<path d="M12 3 2 20h20z"/><path d="M12 10v4M12 17h.01"/>',
+  ahorro: '<path d="M5 11a7 6 0 0 1 13-2l2-1v4l-1 1a7 6 0 0 1-3 4v3h-3v-2h-3v2H7v-3a6 6 0 0 1-2-6z"/><path d="M15 10h.01"/>',
+  ingreso: '<path d="M12 3v18M7 8l5-5 5 5"/>'
+};
+const catIco = (id, s) => '<svg aria-hidden="true" width="' + (s || 22) + '" height="' + (s || 22) + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + (CAT_ICO[id] || '<circle cx="12" cy="12" r="8"/>') + '</svg>';
 const VEH_SVG = {
   custom: '<svg viewBox="0 0 120 60" width="120" height="60" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="24" cy="44" r="12"/><circle cx="98" cy="44" r="12"/><path d="M24 44h20l10-14h22l10 14h12M44 30l-6-10h10M62 30l4-8h14l8 8M86 44 74 22"/></svg>',
   trail: '<svg viewBox="0 0 120 60" width="120" height="60" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="24" cy="44" r="13"/><circle cx="98" cy="44" r="13"/><path d="M24 44l18-20h26l12 8h10l8 12M42 24l-6-10h12M58 24l6-12h12l6 10M82 22l16 22"/></svg>',
@@ -209,7 +231,7 @@ function statsClientes(anio) {
   return out;
 }
 function maxNum() { return Math.max(0, ...S.facturas.filter((f) => !String(f.num).startsWith('R')).map((f) => { const m = /\.(\d+)$/.exec(f.num); return m ? +m[1] : 0; })); }
-function siguienteN() { return Math.max(+S.ajustes.siguiente || 1, maxNum() + 1); }
+function siguienteN() { const m = maxNum(); return m > 0 ? m + 1 : (+S.ajustes.siguiente || 1); }
 function siguienteNum() { const y = String(new Date().getFullYear()).slice(2); return y + S.ajustes.serie + '.' + siguienteN(); }
 function faltanDatos() {
   const a = S.ajustes; const f = [];
@@ -288,7 +310,7 @@ function vInicio() {
     '<div class="hero"><span class="lbl">Balance de ' + esc(nombre) + '</span><span class="big num" id="balance">' + eur(UI.shown, true) + '</span>' +
     '<div class="row"><div class="f1"><div class="lbl">Cobrado</div><div class="num" style="font-weight:600;color:var(--ok)">' + eur(r.cobrado) + '</div></div><div class="f1"><div class="lbl">Gastado</div><div class="num" style="font-weight:600">' + eur(r.gastado) + '</div></div><div class="f1"><div class="lbl">Ahorrado</div><div class="num" style="font-weight:600">' + eur(r.ahorrado) + '</div></div></div></div>' +
     '<div class="grid" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px">' +
-    '<div class="card" style="animation-delay:60ms"><span class="sub">Dinero libre ' + y + '</span><span class="num" style="font-size:22px;font-weight:700;color:' + (libre >= 0 ? 'var(--tx)' : 'var(--bad)') + '">' + eur(libre) + '</span><span class="sub" style="font-size:12px">Balance del año menos ahorro y lo que reservar</span></div>' +
+    '<button class="card" data-a="desglose" style="animation-delay:60ms;border:none;text-align:left;cursor:pointer;color:var(--tx)"><span class="sub">Te queda este año</span><span class="num" style="font-size:22px;font-weight:700;color:' + (libre >= 0 ? 'var(--tx)' : 'var(--bad)') + '">' + eur(libre) + '</span><span class="sub" style="font-size:12px">Ya descontado lo de Hacienda · toca para ver el desglose</span></button>' +
     '<a href="#hacienda" class="card" style="animation-delay:120ms;color:var(--tx)"><span class="sub">Reservar para Hacienda</span><span class="num" style="font-size:22px;font-weight:700">' + eur(res.total) + '</span><span class="sub" style="font-size:12px">303: ' + eur(Math.max(0, res.h.res303)) + ' · 130: ' + eur(res.h.pago130) + (pl ? '<br>Próximo plazo: ' + fechaCorta(isoDate(pl.f)) : '') + '</span></a></div>' +
     (avisos.length ? '<div class="card" style="animation-delay:150ms"><div class="between"><b>Avisos</b>' + ico('bell', 18) + '</div><div class="list">' + avisos.join('') + '</div></div>' : '') +
     '<div class="card" style="animation-delay:180ms"><div class="between"><b>Facturas pendientes</b><a href="#facturas" class="sub" style="color:var(--ac)">' + pend.length + ' · ' + eur(pend.reduce((s, f) => s + totalesFactura(f).total, 0)) + '</a></div>' +
@@ -379,9 +401,9 @@ function vMovimientos() {
   let html = '', last = '';
   shown.forEach((m) => {
     if (m.fecha !== last) { html += '<div class="sub" style="padding:14px 4px 4px;font-weight:600">' + fechaCorta(m.fecha) + ' ' + m.fecha.slice(0, 4) + '</div>'; last = m.fecha; }
-    const c = m.ingreso ? { ic: '€', col: '#6EE7A8', n: 'Cobro' } : m.cat === 'ahorro' ? { ic: 'A', col: '#7C9CFF', n: 'Ahorro · ' + (m.cuenta || '') } : cat(m.cat);
+    const c = m.ingreso ? { id: 'ingreso', col: '#6EE7A8', n: 'Cobro' } : m.cat === 'ahorro' ? { id: 'ahorro', col: '#7C9CFF', n: 'Ahorro · ' + (m.cuenta || '') } : cat(m.cat);
     const sub = m.ingreso ? 'Factura cobrada' : (c.n + (m.veh ? ' · ' + ((veh(m.veh) || {}).nombre || '') : '') + (m.foto ? ' · ticket' : ''));
-    html += '<button class="item" data-a="' + (m.ingreso ? 'ver-factura' : 'editar-mov') + '" data-id="' + m.id + '"><span class="ico" style="background:' + c.col + '22;color:' + c.col + '">' + esc(c.ic) + '</span><span class="f1"><div style="font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(m.concepto) + '</div><div class="sub" style="font-size:12px">' + esc(sub) + '</div></span><span class="num" style="font-weight:600;color:' + (m.ingreso ? 'var(--ok)' : 'var(--tx)') + '">' + (m.ingreso ? '+' : m.cat === 'ahorro' ? '' : '−') + eur(m.importe) + '</span></button>';
+    html += '<button class="item" data-a="' + (m.ingreso ? 'ver-factura' : 'editar-mov') + '" data-id="' + m.id + '"><span class="ico" style="background:' + c.col + '22;color:' + c.col + '">' + catIco(c.id, 20) + '</span><span class="f1"><div style="font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(m.concepto) + '</div><div class="sub" style="font-size:12px">' + esc(sub) + '</div></span><span class="num" style="font-weight:600;color:' + (m.ingreso ? 'var(--ok)' : 'var(--tx)') + '">' + (m.ingreso ? '+' : m.cat === 'ahorro' ? '' : '−') + eur(m.importe) + '</span></button>';
   });
   const tot = items.reduce((s, m) => s + (m.ingreso ? m.importe : m.cat === 'ahorro' ? 0 : -m.importe), 0);
   const chips = [['todos', 'Todo'], ['trabajo', 'Trabajo'], ['personal', 'Personal'], ['ingresos', 'Cobros'], ['deducible', 'Deducible'], ['ahorro', 'Ahorro']];
@@ -428,7 +450,7 @@ function pintarGasto() {
     '<label class="f">Concepto<input class="in" id="g-con" value="' + esc(g.concepto) + '" placeholder="' + (esAhorro ? 'Ahorro del mes' : 'Repsol, Mercadona, vuelo…') + '" data-g="concepto" autocomplete="off"></label>' +
     (esAhorro ? '<label class="f">Cuenta<select class="in" data-g="cuenta">' + ['BBVA', 'Metálico', 'Revolut', 'Otra'].map((x) => '<option' + (g.cuenta === x ? ' selected' : '') + '>' + x + '</option>').join('') + '</select></label>' :
       '<div class="f" style="display:flex;flex-direction:column;gap:8px"><span class="sub">Categoría' + (sug && sug !== g.cat ? ' · <button class="btn sm ghost" data-a="g-cat" data-c="' + sug + '">Usar ' + esc(cat(sug).n) + '</button>' : '') + '</span><div class="catgrid">' +
-      cats.map((x) => '<button class="cat ' + (g.cat === x.id ? 'on' : '') + '" data-a="g-cat" data-c="' + x.id + '"><b style="color:' + x.col + '">' + esc(cat(x.id).ic) + '</b>' + esc(cat(x.id).n) + '</button>').join('') + '</div></div>') +
+      cats.map((x) => '<button class="cat ' + (g.cat === x.id ? 'on' : '') + '" data-a="g-cat" data-c="' + x.id + '"><span style="color:' + x.col + '">' + catIco(x.id, 24) + '</span>' + esc(cat(x.id).n) + '</button>').join('') + '</div></div>') +
     (c && c.veh ? '<div style="display:flex;flex-direction:column;gap:8px"><span class="sub">Vehículo</span><div class="seg">' + S.vehiculos.map((v) => '<button class="' + (g.veh === v.id ? 'on' : '') + '" data-a="g-veh" data-v="' + v.id + '">' + esc(v.nombre) + '</button>').join('') + '</div></div>' : '') +
     (c && c.nota ? '<label class="f">Anotación (la lección)<input class="in" value="' + esc(g.nota || '') + '" data-g="nota" placeholder="Si llueve, no entrar en barrizales"></label>' : '') +
     '<div class="row"><label class="btn dash f1" style="cursor:pointer">' + ico('cam', 18) + (g.foto || g.fotoNueva ? 'Ticket añadido ✓' : 'Foto del ticket') + '<input type="file" accept="image/*" capture="environment" hidden data-file="ticket"></label><input type="date" class="in" style="width:auto" value="' + g.fecha + '" data-g="fecha" aria-label="Fecha"></div>' +
@@ -487,7 +509,6 @@ let F_EDIT = null;
 function nuevaFactura(base) {
   const n = siguienteN();
   const f = { id: uid(), num: siguienteNum(), fecha: hoy(), cliente: base ? base.cliente : '', lineas: base ? JSON.parse(JSON.stringify(base.lineas)) : [{ c: '', imp: 0, det: '' }], estado: 'borrador', km: 0, veh: '', versiones: [] };
-  S.ajustes.siguiente = n + 1; touch(S.ajustes);
   S.facturas.push(touch(f)); guardar();
   return f;
 }
@@ -665,7 +686,7 @@ function vAjustes() {
   const inp = (k, l, ph) => '<label class="f">' + l + '<input class="in" value="' + esc(a[k]) + '" data-ax="' + k + '" placeholder="' + esc(ph || '') + '"></label>';
   return '<div class="top"><h1>Ajustes</h1></div><div class="grid home-grid">' +
     '<div class="card"><b>Tus datos fiscales</b>' + inp('nombre', 'Nombre completo') + inp('nif', 'NIF') + inp('direccion1', 'Dirección', 'Calle, número') + inp('direccion2', 'CP, ciudad, provincia') + inp('telefono', 'Teléfono') + inp('iban', 'IBAN') + inp('pieActividad', 'Actividad en el pie', 'PRODUCCIONES') + '</div>' +
-    '<div class="card"><b>Facturas</b><div class="row"><label class="f f1">Serie<input class="in" value="' + esc(a.serie) + '" data-ax="serie"></label><label class="f f1">Siguiente número<input class="in" inputmode="numeric" value="' + a.siguiente + '" data-ax="siguiente"></label></div><span class="sub" style="font-size:12px">Próxima factura: <b>' + esc(siguienteNum()) + '</b></span>' +
+    '<div class="card"><b>Facturas</b><div class="row"><label class="f f1">Serie<input class="in" value="' + esc(a.serie) + '" data-ax="serie"></label><label class="f f1">Empezar en (solo sin facturas)<input class="in" inputmode="numeric" value="' + a.siguiente + '" data-ax="siguiente"></label></div><span class="sub" style="font-size:12px">Próxima factura: <b>' + esc(siguienteNum()) + '</b></span>' +
     '<div class="row"><label class="f f1">IVA %<input class="in" inputmode="numeric" value="' + a.ivaPct + '" data-ax="ivaPct"></label><label class="f f1">IRPF %<input class="in" inputmode="numeric" value="' + a.irpfPct + '" data-ax="irpfPct"></label><label class="f f1">Vence (meses)<input class="in" inputmode="numeric" value="' + a.venceMeses + '" data-ax="venceMeses"></label></div>' +
     '<div class="row"><label class="f f1">Difícil justificación %<input class="in" inputmode="decimal" value="' + a.gdjPct + '" data-ax="gdjPct"></label><label class="f f1">Máximo anual €<input class="in" inputmode="numeric" value="' + a.gdjMax + '" data-ax="gdjMax"></label></div>' +
     '<label class="btn ghost" style="cursor:pointer">' + ico('cam', 16) + (a.cabeceraFoto ? 'Cambiar cabecera de la factura' : 'Subir cabecera de la factura (JPG)') + '<input type="file" accept="image/jpeg" hidden data-file="cabecera"></label></div>' +
@@ -884,6 +905,20 @@ document.addEventListener('click', async (e) => {
         const cred = await navigator.credentials.create({ publicKey: { challenge: crypto.getRandomValues(new Uint8Array(32)), rp: { name: 'Mis cuentas' }, user: { id: crypto.getRandomValues(new Uint8Array(16)), name: 'yo', displayName: 'Mis cuentas' }, pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }], authenticatorSelection: { authenticatorAttachment: 'platform', userVerification: 'required' }, timeout: 60000 } });
         S.ajustes.huella = b64.enc(cred.rawId); touch(S.ajustes); guardar(); toast('Huella activada'); render();
       } catch (err) { toast('No se pudo activar: ' + err.message); }
+      break;
+    }
+    case 'desglose': {
+      const y = new Date().getFullYear(); const ry = resumen(y + '-01-01', y + '-12-31'); const res = reservar();
+      const pagHac = S.movimientos.filter((m) => m.cat === 'hacienda' && m.fecha.startsWith(String(y))).reduce((s2, m) => s2 + m.importe, 0);
+      const pend = S.facturas.filter(pendiente).reduce((s2, f2) => s2 + totalesFactura(f2).total, 0);
+      const libre = ry.balance - ry.ahorrado - res.total;
+      const fila = (l, v, extra) => '<div class="between" style="font-size:15px' + (extra || '') + '"><span>' + l + '</span><span class="num" style="white-space:nowrap">' + v + '</span></div>';
+      hoja('<div class="between"><h2 style="font-size:20px">Te queda este año</h2><button class="btn icon" data-a="cerrar" aria-label="Cerrar">' + ico('x') + '</button></div>' +
+        '<div class="card" style="gap:10px">' + fila('Cobrado en ' + y, eur(ry.cobrado)) + fila('Gastado', '−' + eur(ry.gastado)) +
+        (pagHac ? '<span class="sub" style="font-size:12px;margin-top:-6px">Incluye ' + eur(pagHac) + ' de pagos a Hacienda ya hechos</span>' : '') +
+        fila('Pasado a ahorro', '−' + eur(ry.ahorrado)) + fila('Apartar para Hacienda (trimestre en curso)', '−' + eur(res.total)) +
+        fila('<b>Te queda</b>', '<b>' + eur(libre) + '</b>', ';border-top:1px solid var(--line);padding-top:10px;font-size:17px') + '</div>' +
+        '<div class="infobox">Es lo que te queda de lo apuntado en la app, no tu saldo del banco. Para que sea exacto, cuando pagues el 303 o el 130 márcalo como pagado en Hacienda.' + (pend ? '<br><br>Además tienes <b>' + eur(pend) + '</b> en facturas pendientes de cobro que aún no cuentan aquí.' : '') + '</div>');
       break;
     }
     case 'sync': sincronizar(); break;
