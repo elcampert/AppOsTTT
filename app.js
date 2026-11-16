@@ -417,8 +417,8 @@ function vMovimientos() {
     '<select class="in" style="width:auto" data-in="mesFiltro" aria-label="Mes"><option value="">Todos los meses</option>' + meses.map((m) => '<option value="' + m + '"' + (UI.mesFiltro === m ? ' selected' : '') + '>' + MESES[+m.slice(5) - 1] + ' ' + m.slice(0, 4) + '</option>').join('') + '</select></div>' +
     '<div class="chips" style="margin-bottom:6px">' + chips.map(([k, l]) => '<button class="chip ' + (f === k ? 'on' : '') + '" data-a="filtro" data-f="' + k + '">' + l + '</button>').join('') +
     '<select class="chip" data-in="filtro" aria-label="Categoría o vehículo"><option value="">Categoría…</option>' + CATS.map((c) => '<option value="cat:' + c.id + '"' + (f === 'cat:' + c.id ? ' selected' : '') + '>' + esc(c.n) + '</option>').join('') + S.vehiculos.map((v) => '<option value="veh:' + v.id + '"' + (f === 'veh:' + v.id ? ' selected' : '') + '>Vehículo: ' + esc(v.nombre) + '</option>').join('') + '</select></div>' +
-    '<div class="between sub" style="padding:6px 4px">' + items.length + ' movimientos<span class="num">' + eur(tot, true) + '</span></div>' +
-    '<div class="card" style="padding:6px 12px">' + (html || '<span class="sub" style="padding:12px 0">No hay movimientos con este filtro.</span>') + (items.length > 400 ? '<span class="sub" style="padding:10px 0">Mostrando los 400 más recientes. Usa los filtros para ver más.</span>' : '') + '</div>';
+    '<div id="mov-res"><div class="between sub" style="padding:6px 4px">' + items.length + ' movimientos<span class="num">' + eur(tot, true) + '</span></div>' +
+    '<div class="card" style="padding:6px 12px">' + (html || '<span class="sub" style="padding:12px 0">No hay movimientos con este filtro.</span>') + (items.length > 400 ? '<span class="sub" style="padding:10px 0">Mostrando los 400 más recientes. Usa los filtros para ver más.</span>' : '') + '</div></div>';
 }
 
 /* ---------- Hoja de gasto ---------- */
@@ -435,37 +435,44 @@ function sugerirCat(concepto) {
   const m = S.movimientos.filter((x) => x.concepto.toLowerCase().startsWith(q)).sort((a, b) => b.fecha.localeCompare(a.fecha))[0];
   return m ? m.cat : null;
 }
+function sugHTML(g) { const sug = !g.id ? sugerirCat(g.concepto) : null; return sug && sug !== g.cat ? ' · <button class="btn sm ghost" data-a="g-cat" data-c="' + sug + '">Usar ' + esc(cat(sug).n) + '</button>' : ''; }
+function dedTexto(g) {
+  if (g.cat === 'ahorro' || !(g.importe > 0)) return '';
+  const c = cat(g.cat); const k = movCalc(g); let ded;
+  if (c.veh) { const v = veh(g.veh); ded = !v || !v.propio ? 'Vehículo personal: no deducible' : v.pct ? 'Deducible (' + v.pct + ' % por km de trabajo): IVA ' + eur(k.ivaDed) + ' · IRPF ' + eur(k.irpfDed) : 'Deducible según km de trabajo (fija el % en Hacienda)'; }
+  else if (k.amortBase) ded = 'IVA deducible ' + eur(k.ivaDed) + ' · se amortiza ' + eur(k.amortBase / k.amortAnios) + ' al año durante ' + k.amortAnios + ' años';
+  else if (k.ivaDed || k.irpfDed) ded = 'IVA deducible ' + eur(k.ivaDed) + ' · gasto deducible ' + eur(k.irpfDed);
+  else ded = 'Gasto personal: no deducible';
+  if (!c.amort && c.t === 'trabajo' && g.importe > 300 * (1 + S.ajustes.ivaPct / 100)) ded += '<br><b>Más de 300 €:</b> quizá deba amortizarse. Elige «Equipo +300 €».';
+  return ded;
+}
+function refrescarGasto() {
+  const a = $('#g-sug'); if (a) a.innerHTML = sugHTML(G_EDIT);
+  const b = $('#g-ded'); if (b) { const t = dedTexto(G_EDIT); b.innerHTML = t ? '<div class="infobox">' + t + '</div>' : ''; }
+}
 function pintarGasto() {
   const g = G_EDIT; const esAhorro = g.cat === 'ahorro';
   const cats = CATS.slice().sort((a, b) => (a.fija || 99) - (b.fija || 99));
   const sug = !g.id ? sugerirCat(g.concepto) : null;
   const c = esAhorro ? null : cat(g.cat);
-  let ded = '';
-  if (!esAhorro && g.importe > 0) {
-    const k = movCalc(g);
-    if (c.veh) { const v = veh(g.veh); ded = !v || !v.propio ? 'Vehículo personal: no deducible' : v.pct ? 'Deducible (' + v.pct + ' % por km de trabajo): IVA ' + eur(k.ivaDed) + ' · IRPF ' + eur(k.irpfDed) : 'Deducible según km de trabajo (fija el % en Hacienda)'; }
-    else if (k.amortBase) ded = 'IVA deducible ' + eur(k.ivaDed) + ' · se amortiza ' + eur(k.amortBase / k.amortAnios) + ' al año durante ' + k.amortAnios + ' años';
-    else if (k.ivaDed || k.irpfDed) ded = 'IVA deducible ' + eur(k.ivaDed) + ' · gasto deducible ' + eur(k.irpfDed);
-    else ded = 'Gasto personal: no deducible';
-    if (!c.amort && cat(g.cat).t === 'trabajo' && g.importe > 300 * (1 + S.ajustes.ivaPct / 100)) ded += '<br><b>Más de 300 €:</b> quizá deba amortizarse. Elige «Equipo +300 €».';
-  }
+  const ded = dedTexto(g);
   const trabajos = S.facturas.filter((f) => f.estado !== 'borrador' || true).sort((a, b) => b.fecha.localeCompare(a.fecha)).slice(0, 25);
   hoja('<div class="between"><button class="btn icon" data-a="cerrar" aria-label="Cerrar">' + ico('x') + '</button><div class="seg"><button class="' + (!esAhorro ? 'on' : '') + '" data-a="g-tipo" data-t="gasto">Gasto</button><button class="' + (esAhorro ? 'on' : '') + '" data-a="g-tipo" data-t="ahorro">Ahorro</button></div><span style="width:44px"></span></div>' +
     '<label class="f" style="align-items:center">Importe' + (esAhorro ? '' : ' (IVA incluido)') + '<input class="amount num" inputmode="decimal" id="g-imp" value="' + (g.importe ? String(g.importe).replace('.', ',') : '') + '" placeholder="0,00 €" data-g="importe"></label>' +
     '<label class="f">Concepto<input class="in" id="g-con" value="' + esc(g.concepto) + '" placeholder="' + (esAhorro ? 'Ahorro del mes' : 'Repsol, Mercadona, vuelo…') + '" data-g="concepto" autocomplete="off"></label>' +
     (esAhorro ? '<label class="f">Cuenta<select class="in" data-g="cuenta">' + ['BBVA', 'Metálico', 'Revolut', 'Otra'].map((x) => '<option' + (g.cuenta === x ? ' selected' : '') + '>' + x + '</option>').join('') + '</select></label>' :
-      '<div class="f" style="display:flex;flex-direction:column;gap:8px"><span class="sub">Categoría' + (sug && sug !== g.cat ? ' · <button class="btn sm ghost" data-a="g-cat" data-c="' + sug + '">Usar ' + esc(cat(sug).n) + '</button>' : '') + '</span><div class="catgrid">' +
+      '<div class="f" style="display:flex;flex-direction:column;gap:8px"><span class="sub">Categoría<span id="g-sug">' + sugHTML(g) + '</span></span><div class="catgrid">' +
       cats.map((x) => '<button class="cat ' + (g.cat === x.id ? 'on' : '') + '" data-a="g-cat" data-c="' + x.id + '"><span style="color:' + x.col + '">' + catIco(x.id, 24) + '</span>' + esc(cat(x.id).n) + '</button>').join('') + '</div></div>') +
     (c && c.veh ? '<div style="display:flex;flex-direction:column;gap:8px"><span class="sub">Vehículo</span><div class="seg">' + S.vehiculos.map((v) => '<button class="' + (g.veh === v.id ? 'on' : '') + '" data-a="g-veh" data-v="' + v.id + '">' + esc(v.nombre) + '</button>').join('') + '</div></div>' : '') +
     (c && c.nota ? '<label class="f">Anotación (la lección)<input class="in" value="' + esc(g.nota || '') + '" data-g="nota" placeholder="Si llueve, no entrar en barrizales"></label>' : '') +
     '<div class="row"><label class="btn dash f1" style="cursor:pointer">' + ico('cam', 18) + (g.foto || g.fotoNueva ? 'Ticket añadido ✓' : 'Foto del ticket') + '<input type="file" accept="image/*" capture="environment" hidden data-file="ticket"></label><input type="date" class="in" style="width:auto" value="' + g.fecha + '" data-g="fecha" aria-label="Fecha"></div>' +
     (g.foto ? '<button class="btn ghost sm" data-a="ver-foto" data-id="' + g.foto + '">Ver ticket</button>' : '') +
     (!esAhorro && trabajos.length ? '<details' + (g.trabajo ? ' open' : '') + '><summary class="sub" style="cursor:pointer;padding:4px 0">Asociar a un trabajo (opcional)</summary><select class="in" data-g="trabajo" style="margin-top:8px"><option value="">Ninguno</option>' + trabajos.map((f) => '<option value="' + f.id + '"' + (g.trabajo === f.id ? ' selected' : '') + '>' + esc(f.num + ' · ' + (f.lineas[0] ? f.lineas[0].c : '')) + '</option>').join('') + '</select></details>' : '') +
-    (ded ? '<div class="infobox">' + ded + '</div>' : '') +
+    '<div id="g-ded">' + (ded ? '<div class="infobox">' + ded + '</div>' : '') + '</div>' +
     '<div class="row">' + (g.id ? '<button class="btn danger" data-a="g-borrar">Borrar</button>' : '') + '<button class="btn pri f1" style="min-height:54px;font-size:16px" data-a="g-guardar">Guardar' + (esAhorro ? ' ahorro' : ' gasto') + '</button></div>');
   if (!g.id) setTimeout(() => { const e = $('#g-imp'); if (e && !g.importe) e.focus(); }, 250);
 }
-function hoja(html) { $('#layer').innerHTML = '<div class="sheet-bg" data-a="cerrar-fondo"><div class="sheet" role="dialog" aria-modal="true">' + html + '</div></div>'; }
+function hoja(html) { const sh = $('#layer .sheet'); if (sh) { const st = sh.scrollTop; sh.innerHTML = html; sh.scrollTop = st; return; } $('#layer').innerHTML = '<div class="sheet-bg" data-a="cerrar-fondo"><div class="sheet" role="dialog" aria-modal="true">' + html + '</div></div>'; }
 function cerrarHoja() { $('#layer').innerHTML = ''; G_EDIT = null; }
 
 /* ---------- Facturas ---------- */
@@ -937,7 +944,8 @@ document.addEventListener('click', async (e) => {
 });
 document.addEventListener('input', (e) => {
   const el = e.target; const d = el.dataset;
-  if (d.g !== undefined && G_EDIT) { G_EDIT[d.g] = d.g === 'importe' ? parseEur(el.value) : el.value; if (d.g === 'importe' || d.g === 'concepto') { clearTimeout(pintarGasto.t); pintarGasto.t = setTimeout(() => { const pos = el.selectionStart; const idf = el.id; pintarGasto(); const n = idf && $('#' + idf); if (n) { n.focus(); try { n.setSelectionRange(pos, pos); } catch (x) { } } }, 600); } return; }
+  if (d.g !== undefined && G_EDIT) { G_EDIT[d.g] = d.g === 'importe' ? parseEur(el.value) : el.value; if (d.g === 'importe' || d.g === 'concepto') refrescarGasto(); return; }
+  if (d.in === 'q') { UI.q = el.value; clearTimeout(render.t); render.t = setTimeout(() => { const tmp = document.createElement('div'); tmp.innerHTML = vMovimientos(); const n = tmp.querySelector('#mov-res'), o = $('#mov-res'); if (n && o) o.replaceWith(n); }, 250); return; }
   if (d.in) { UI[d.in] = el.value; clearTimeout(render.t); render.t = setTimeout(() => { const pos = el.selectionStart; render(); const n = document.querySelector('[data-in="' + d.in + '"]'); if (n && n.tagName === 'INPUT') { n.focus(); n.setSelectionRange(pos, pos); } }, 250); return; }
   if (d.ln !== undefined && F_EDIT) { versionar(F_EDIT); const l = F_EDIT.lineas[+d.ln]; l[d.k] = d.k === 'imp' ? parseEur(el.value) : el.value; touch(F_EDIT); guardar(); refrescarTotales(); return; }
   if (d.fx && F_EDIT) { if (d.fx !== 'km' && d.fx !== 'veh') versionar(F_EDIT); F_EDIT[d.fx] = d.fx === 'km' ? (parseInt(el.value, 10) || 0) : el.value; touch(F_EDIT); guardar(); refrescarTotales(); return; }
