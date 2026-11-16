@@ -127,6 +127,16 @@ function facturaPDF(f, cli, aj, cabecera) {
     y += 27;
     if (l.det) { txt(cortar(l.det, 'H', 10.3, 400, cs), 64, y - 0, 10.3, 'H', { cs }); y += 27; }
   }
+  if (typeof equipoCobrado === 'function' && equipoCobrado(f) > 0 && y <= 570) {
+    txt('- Alquiler de equipo', 64, y, 10.3, 'H', { cs });
+    txt(eurPDF(equipoCobrado(f)), 536, y, 11.5, 'H', { cs, align: 'right' });
+    y += 15;
+    const det = (f.equipo || []).filter((x) => !x.incluido && !x.propio).map(detalleEq);
+    for (let i = 0; i < det.length; i++) {
+      if (y > 580) { txt('y ' + (det.length - i) + ' más', 72, y, 8.5, 'H', { cs: 0.3, color: '0.35 0.35 0.35' }); break; }
+      txt(cortar(det[i], 'H', 8.5, 440, 0.3), 72, y, 8.5, 'H', { cs: 0.3, color: '0.35 0.35 0.35' }); y += 12;
+    }
+  }
   const t = totalesFactura(f, aj);
   const rowT = (lab, val, yy) => { txt(lab, 444, yy, 11, 'B', { cs: 0.8, align: 'right' }); txt(val, 536, yy, 12.5, 'H', { cs, align: 'right' }); };
   rowT('SUBTOTAL:', eurPDF(t.base), 600);

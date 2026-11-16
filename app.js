@@ -8,6 +8,7 @@ const hoy = () => isoDate(new Date());
 const parseD = (s) => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d || 1); };
 const fechaES = (s) => s ? s.split('-').reverse().join('/') : '';
 const fechaCorta = (s) => { const d = parseD(s); return d.getDate() + ' ' + MESES_C[d.getMonth()]; };
+const addDays = (s, n) => { const d = parseD(s); d.setDate(d.getDate() + n); return isoDate(d); };
 const addMonths = (s, n) => { const d = parseD(s); const day = d.getDate(); d.setDate(1); d.setMonth(d.getMonth() + n); const last = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate(); d.setDate(Math.min(day, last)); return isoDate(d); };
 const diasEntre = (a, b) => Math.round((parseD(b) - parseD(a)) / 86400000);
 const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
@@ -126,7 +127,7 @@ function estadoInicial() {
       { id: 'elfo', nombre: 'Elfo', modelo: 'Dacia Sandero', tipo: 'coche', propio: true, pct: 0, foto: null, upd: 0 },
       { id: 'fury', nombre: 'Fury', modelo: 'Moto de la novia', tipo: 'custom', propio: false, pct: 0, foto: null, upd: 0 }
     ],
-    movimientos: [], facturas: [], presupuestos: [], clientes: [], recurrentes: [], borrados: {}
+    movimientos: [], facturas: [], presupuestos: [], clientes: [], recurrentes: [], equipo: [], packs: [], borrados: {}
   };
 }
 let S = estadoInicial();
@@ -161,7 +162,7 @@ async function comprimir(file, max) {
 /* ============ Cálculos ============ */
 const cat = (id) => { const b = CATS.find((c) => c.id === id) || { id, n: id, t: 'personal', ic: '?', col: '#8A8191' }; const o = S.ajustes.cats[id] || {}; return { ...b, ...o }; };
 const veh = (id) => S.vehiculos.find((v) => v.id === id);
-const esGasto = (m) => m.cat !== 'ahorro';
+const esGasto = (m) => m.cat !== 'ahorro' && m.cat !== 'ingreso';
 function movCalc(m) {
   const c = cat(m.cat);
   let ivaP = c.iva || 0, irpfP = c.irpf || 0;
@@ -172,7 +173,7 @@ function movCalc(m) {
 }
 function totalesFactura(f, aj) {
   aj = aj || S.ajustes;
-  const base = r2(f.lineas.reduce((s, l) => s + (+l.imp || 0), 0));
+  const base = r2(f.lineas.reduce((s, l) => s + (+l.imp || 0), 0) + (typeof equipoCobrado === 'function' ? equipoCobrado(f) : 0));
   const iva = r2(base * aj.ivaPct / 100), irpf = r2(base * aj.irpfPct / 100);
   return { base, iva, irpf, total: r2(base + iva - irpf) };
 }
@@ -186,10 +187,12 @@ function rango(periodo, ref) {
   return [y + '-01-01', y + '-12-31', String(y)];
 }
 function resumen(a, b) {
-  const cobrado = S.facturas.filter((f) => f.estado === 'cobrada' && f.fechaCobro && inRange(f.fechaCobro, a, b)).reduce((s, f) => s + totalesFactura(f).total, 0);
+  let cobrado = S.facturas.filter((f) => f.estado === 'cobrada' && f.fechaCobro && inRange(f.fechaCobro, a, b)).reduce((s, f) => s + totalesFactura(f).total, 0);
   const movs = S.movimientos.filter((m) => inRange(m.fecha, a, b));
   const gastado = movs.filter(esGasto).reduce((s, m) => s + m.importe, 0);
   const ahorrado = movs.filter((m) => m.cat === 'ahorro').reduce((s, m) => s + m.importe, 0);
+  const otros = movs.filter((m) => m.cat === 'ingreso').reduce((s, m) => s + m.importe, 0);
+  cobrado += otros;
   const porCat = {};
   movs.filter(esGasto).forEach((m) => { porCat[m.cat] = (porCat[m.cat] || 0) + m.importe; });
   return { cobrado, gastado, ahorrado, balance: cobrado - gastado, porCat };
@@ -242,6 +245,10 @@ function faltanDatos() {
   if (!a.nombre) f.push('nombre'); if (!a.nif) f.push('NIF'); if (!a.direccion1) f.push('dirección'); if (!a.iban) f.push('IBAN'); if (!a.cabeceraFoto) f.push('cabecera');
   return f;
 }
+const DIAS = ['DOMINGO', 'LUNES', 'MARTES', 'MIERCOLES', 'JUEVES', 'VIERNES', 'SABADO'];
+function viajesDe(f) { if (f.viajes) return f.viajes; return f.km ? [{ id: 'v0', fecha: f.fecha, destino: '', km: +f.km || 0, iv: true, veh: f.veh || '' }] : []; }
+function kmVeh(vid, a, b) { let k = 0; S.facturas.forEach((f) => viajesDe(f).forEach((v) => { if (v.veh === vid && inRange(v.fecha, a, b)) k += +v.km || 0; })); return k; }
+const consumoDe = (v) => v ? (+v.consumo || (v.tipo === 'coche' ? 5.6 : v.tipo === 'trail' ? 4.5 : 4)) : 0;
 function siguienteRect() {
   const y = String(new Date().getFullYear()).slice(2); const pre = 'R' + y + S.ajustes.serie + '.';
   const n = S.facturas.filter((f) => f.num.startsWith(pre)).length + 1; return pre + n;
@@ -269,15 +276,15 @@ const NAV = [['inicio', 'Inicio', 'home'], ['movimientos', 'Movimientos', 'list'
 function ruta() { const h = location.hash.replace('#', '') || 'inicio'; const [v, id] = h.split('/'); return { v, id }; }
 function render() {
   const { v, id } = ruta();
-  const sec = v === 'factura' || v === 'cliente' || v === 'presupuesto' ? 'facturas' : v === 'ajustes' ? 'ajustes' : v;
+  const sec = v === 'factura' || v === 'cliente' || v === 'presupuesto' ? 'facturas' : v === 'art' || v === 'pack' ? 'equipo' : v === 'ajustes' ? 'ajustes' : v;
   $('#side').innerHTML = '<div class="logo">MIS CUENTAS</div>' + NAV.map(([k, l, i]) => '<a href="#' + k + '" class="' + (sec === k ? 'on' : '') + '">' + ico(i) + l + '</a>').join('') +
-    '<a href="#" data-a="nuevo-gasto">' + ico('plus') + 'Apuntar gasto</a><a href="#" data-a="privado">' + ico(PRIV ? 'eyeoff' : 'eye') + (PRIV ? 'Mostrar cantidades' : 'Ocultar cantidades') + '</a><div style="flex:1"></div><a href="#ajustes" class="' + (sec === 'ajustes' ? 'on' : '') + '">' + ico('gear') + 'Ajustes</a>' +
+    '<a href="#equipo" class="' + (sec === 'equipo' ? 'on' : '') + '">' + catIco('equipo', 20) + 'Equipo</a><a href="#" data-a="nuevo-gasto">' + ico('plus') + 'Apuntar gasto</a><a href="#" data-a="privado">' + ico(PRIV ? 'eyeoff' : 'eye') + (PRIV ? 'Mostrar cantidades' : 'Ocultar cantidades') + '</a><div style="flex:1"></div><a href="#ajustes" class="' + (sec === 'ajustes' ? 'on' : '') + '">' + ico('gear') + 'Ajustes</a>' +
     '<button class="btn ghost sm" data-a="sync">' + ico('sync', 16) + 'Sincronizar' + (S.ajustes.ultimaSync ? ' · ' + haceCuanto(S.ajustes.ultimaSync) : '') + '</button>';
   $('#bottom').innerHTML = NAV.slice(0, 2).map(([k, l, i]) => '<a href="#' + k + '" class="' + (sec === k ? 'on' : '') + '">' + ico(i, 22) + l + '</a>').join('') +
     '<a href="#" class="fab" data-a="nuevo-gasto" aria-label="Apuntar gasto">' + ico('plus', 26) + '</a>' +
     NAV.slice(2).map(([k, l, i]) => '<a href="#' + k + '" class="' + (sec === k ? 'on' : '') + '">' + ico(i, 22) + l + '</a>').join('');
   const m = $('#main');
-  const views = { inicio: vInicio, movimientos: vMovimientos, facturas: vFacturas, factura: vFactura, cliente: vCliente, hacienda: vHacienda, ajustes: vAjustes, presupuesto: vPresupuesto };
+  const views = { inicio: vInicio, movimientos: vMovimientos, facturas: vFacturas, factura: vFactura, cliente: vCliente, hacienda: vHacienda, ajustes: vAjustes, presupuesto: vPresupuesto, equipo: vEquipo, art: vArticulo, pack: vPack };
   m.innerHTML = (views[v] || vInicio)(id);
   after(v, id);
 }
@@ -321,7 +328,7 @@ function vInicio() {
     '<div class="card" style="animation-delay:180ms"><div class="between"><b>Facturas pendientes</b><a href="#facturas" class="sub" style="color:var(--ac)">' + pend.length + ' · ' + eur(pend.reduce((s, f) => s + totalesFactura(f).total, 0)) + '</a></div>' +
     (pend.length ? '<div class="list">' + pend.slice(0, 5).map(filaPendiente).join('') + '</div>' : '<span class="sub">Nada pendiente de cobro.</span>') + '</div>' +
     grafico(r, a) +
-    tarjetaVehiculos() +
+    tarjetaVehiculos() + tarjetaEquipoInicio() +
     '</div>';
 }
 function estadoFactura(f) {
@@ -361,6 +368,14 @@ function grafico(r, a) {
   return '<div class="card" style="animation-delay:220ms"><div class="between"><b>' + views[vi][2] + '</b><button class="btn ghost sm" data-a="vista" aria-label="Cambiar vista del gráfico">' + ico('swap', 14) + views[vi][1] + '</button></div>' + body +
     '<div class="row" style="justify-content:center;gap:6px">' + views.map((v, i) => '<span style="height:6px;border-radius:3px;transition:width .25s;width:' + (i === vi ? 18 : 6) + 'px;background:' + (i === vi ? 'var(--ac)' : '#3A2F42') + '"></span>').join('') + '</div></div>';
 }
+function tarjetaEquipoInicio() {
+  if (!S.equipo.length) return '<a href="#equipo" class="card" style="color:var(--tx);animation-delay:300ms"><div class="between"><b>Mi equipo</b>' + ico('right', 18) + '</div><span class="sub">Añade tu equipo para ver lo que te genera cada cosa.</span></a>';
+  const { st } = statsEquipo(); const inv = S.equipo.reduce((s, a) => s + st[a.id].coste, 0), gen = S.equipo.reduce((s, a) => s + st[a.id].total, 0);
+  const top = S.equipo.filter((a) => st[a.id].total > 0).sort((a, b) => st[b.id].total - st[a.id].total).slice(0, 3);
+  return '<a href="#equipo" class="card" style="color:var(--tx);animation-delay:300ms"><div class="between"><b>Mi equipo</b><span class="sub">' + S.equipo.reduce((s, a) => s + unidadesActivas(a).length, 0) + ' piezas ' + ico('right', 16) + '</span></div>' +
+    '<div class="between" style="font-size:13px"><span class="sub">Invertido · generado</span><span class="num">' + eur(inv) + ' · ' + eur(gen) + '</span></div>' + barraPct(inv ? gen / inv * 100 : null) +
+    (top.length ? '<span class="sub" style="font-size:12px">Lo que más te genera: ' + top.map((a) => esc(a.nombre)).join(', ') + '</span>' : '') + '</a>';
+}
 function tarjetaVehiculos() {
   const y = new Date().getFullYear(); const [ma, mb] = rango('mes', hoy().slice(0, 8) + '01');
   const vs = S.vehiculos.filter((v) => v.propio);
@@ -368,7 +383,7 @@ function tarjetaVehiculos() {
     const g = S.movimientos.filter((m) => m.cat === 'gasolina' && m.veh === v.id);
     const mes = g.filter((m) => inRange(m.fecha, ma, mb)).reduce((s, m) => s + m.importe, 0);
     const an = g.filter((m) => m.fecha.startsWith(String(y)));
-    const km = S.facturas.filter((f) => f.veh === v.id && f.km && f.fecha.startsWith(String(y))).reduce((s, f) => s + (+f.km || 0), 0);
+    const km = kmVeh(v.id, y + '-01-01', y + '-12-31');
     const ded = an.reduce((s, m) => s + movCalc(m).irpfDed, 0);
     return '<div class="vehcard"><div class="vehimg" data-foto="' + (v.foto || '') + '">' + (v.foto ? '' : VEH_SVG[v.tipo]) + '</div><div style="padding:12px;display:flex;flex-direction:column;gap:4px"><div class="between"><b>' + esc(v.nombre) + '</b><span class="sub" style="font-size:11px">' + esc(v.modelo) + '</span></div>' +
       '<div class="between" style="font-size:13px"><span class="sub">Este mes</span><span class="num">' + eur(mes) + '</span></div><div class="between" style="font-size:13px"><span class="sub">' + y + ' (' + an.length + ' repostajes)</span><span class="num">' + eur(an.reduce((s, m) => s + m.importe, 0)) + '</span></div>' +
@@ -391,11 +406,11 @@ function vMovimientos() {
   const cobros = S.facturas.filter((f) => f.estado === 'cobrada' && f.fechaCobro).map((f) => ({ id: f.id, fecha: f.fechaCobro, concepto: 'Cobro ' + f.num + ' · ' + nombreCli(f.cliente), importe: totalesFactura(f).total, ingreso: true, cat: 'ingreso' }));
   let items = S.movimientos.concat(cobros);
   const f = UI.filtro;
-  if (f === 'trabajo') items = items.filter((m) => !m.ingreso && m.cat !== 'ahorro' && cat(m.cat).t !== 'personal');
-  else if (f === 'personal') items = items.filter((m) => !m.ingreso && m.cat !== 'ahorro' && cat(m.cat).t === 'personal');
-  else if (f === 'ingresos') items = items.filter((m) => m.ingreso);
+  if (f === 'trabajo') items = items.filter((m) => !m.ingreso && esGasto(m) && cat(m.cat).t !== 'personal');
+  else if (f === 'personal') items = items.filter((m) => !m.ingreso && esGasto(m) && cat(m.cat).t === 'personal');
+  else if (f === 'ingresos') items = items.filter((m) => m.ingreso || m.cat === 'ingreso');
   else if (f === 'ahorro') items = items.filter((m) => m.cat === 'ahorro');
-  else if (f === 'deducible') items = items.filter((m) => !m.ingreso && m.cat !== 'ahorro' && (movCalc(m).ivaDed > 0 || movCalc(m).irpfDed > 0 || movCalc(m).amortBase > 0));
+  else if (f === 'deducible') items = items.filter((m) => !m.ingreso && esGasto(m) && (movCalc(m).ivaDed > 0 || movCalc(m).irpfDed > 0 || movCalc(m).amortBase > 0));
   else if (f.startsWith('cat:')) items = items.filter((m) => m.cat === f.slice(4));
   else if (f.startsWith('veh:')) items = items.filter((m) => m.veh === f.slice(4));
   if (UI.mesFiltro) items = items.filter((m) => m.fecha.startsWith(UI.mesFiltro));
@@ -406,11 +421,11 @@ function vMovimientos() {
   let html = '', last = '';
   shown.forEach((m) => {
     if (m.fecha !== last) { html += '<div class="sub" style="padding:14px 4px 4px;font-weight:600">' + fechaCorta(m.fecha) + ' ' + m.fecha.slice(0, 4) + '</div>'; last = m.fecha; }
-    const c = m.ingreso ? { id: 'ingreso', col: '#6EE7A8', n: 'Cobro' } : m.cat === 'ahorro' ? { id: 'ahorro', col: '#7C9CFF', n: 'Ahorro · ' + (m.cuenta || '') } : cat(m.cat);
-    const sub = m.ingreso ? 'Factura cobrada' : (c.n + (m.veh ? ' · ' + ((veh(m.veh) || {}).nombre || '') : '') + (m.foto ? ' · ticket' : ''));
-    html += '<button class="item" data-a="' + (m.ingreso ? 'ver-factura' : 'editar-mov') + '" data-id="' + m.id + '"><span class="ico" style="background:' + c.col + '22;color:' + c.col + '">' + catIco(c.id, 20) + '</span><span class="f1"><div style="font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(m.concepto) + '</div><div class="sub" style="font-size:12px">' + esc(sub) + '</div></span><span class="num" style="font-weight:600;color:' + (m.ingreso ? 'var(--ok)' : 'var(--tx)') + '">' + (m.ingreso ? '+' : m.cat === 'ahorro' ? '' : '−') + eur(m.importe) + '</span></button>';
+    const c = m.ingreso ? { id: 'ingreso', col: '#6EE7A8', n: 'Cobro' } : m.cat === 'ingreso' ? { id: 'ingreso', col: '#6EE7A8', n: 'Ingreso · ' + (m.tipoIng || '') } : m.cat === 'ahorro' ? { id: 'ahorro', col: '#7C9CFF', n: 'Ahorro · ' + (m.cuenta || '') } : cat(m.cat);
+    const sub = m.ingreso ? 'Factura cobrada' : m.cat === 'ingreso' ? 'Ingreso sin factura · ' + (m.tipoIng || '') : (c.n + (m.veh ? ' · ' + ((veh(m.veh) || {}).nombre || '') : '') + (m.foto ? ' · ticket' : ''));
+    html += '<button class="item" data-a="' + (m.ingreso ? 'ver-factura' : 'editar-mov') + '" data-id="' + m.id + '"><span class="ico" style="background:' + c.col + '22;color:' + c.col + '">' + catIco(c.id, 20) + '</span><span class="f1"><div style="font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(m.concepto) + '</div><div class="sub" style="font-size:12px">' + esc(sub) + '</div></span><span class="num" style="font-weight:600;color:' + (m.ingreso || m.cat === 'ingreso' ? 'var(--ok)' : 'var(--tx)') + '">' + (m.ingreso || m.cat === 'ingreso' ? '+' : m.cat === 'ahorro' ? '' : '−') + eur(m.importe) + '</span></button>';
   });
-  const tot = items.reduce((s, m) => s + (m.ingreso ? m.importe : m.cat === 'ahorro' ? 0 : -m.importe), 0);
+  const tot = items.reduce((s, m) => s + (m.ingreso || m.cat === 'ingreso' ? m.importe : m.cat === 'ahorro' ? 0 : -m.importe), 0);
   const chips = [['todos', 'Todo'], ['trabajo', 'Trabajo'], ['personal', 'Personal'], ['ingresos', 'Cobros'], ['deducible', 'Deducible'], ['ahorro', 'Ahorro']];
   return '<div class="top"><h1>Movimientos</h1><button class="btn pri" data-a="nuevo-gasto">' + ico('plus', 16) + 'Apuntar</button></div>' +
     '<div class="row" style="margin-bottom:10px"><div style="position:relative" class="f1"><span style="position:absolute;left:12px;top:13px;color:var(--mut)">' + ico('search', 18) + '</span><input class="in" style="padding-left:40px" placeholder="Buscar: Iberia, Mercadona…" value="' + esc(UI.q) + '" data-in="q" aria-label="Buscar"></div>' +
@@ -425,7 +440,7 @@ function vMovimientos() {
 let G_EDIT = null;
 function abrirGasto(id) {
   const m = id ? S.movimientos.find((x) => x.id === id) : null;
-  G_EDIT = m ? JSON.parse(JSON.stringify(m)) : { id: null, fecha: hoy(), concepto: '', importe: 0, cat: 'gasolina', veh: null };
+  G_EDIT = m ? { ...JSON.parse(JSON.stringify(m)), yaTenia: true } : { id: null, fecha: hoy(), concepto: '', importe: 0, cat: 'gasolina', veh: null };
   if (!G_EDIT.veh && G_EDIT.cat === 'gasolina') G_EDIT.veh = ultimoVeh();
   pintarGasto();
 }
@@ -435,9 +450,9 @@ function sugerirCat(concepto) {
   const m = S.movimientos.filter((x) => x.concepto.toLowerCase().startsWith(q)).sort((a, b) => b.fecha.localeCompare(a.fecha))[0];
   return m ? m.cat : null;
 }
-function sugHTML(g) { const sug = !g.id ? sugerirCat(g.concepto) : null; return sug && sug !== g.cat ? ' · <button class="btn sm ghost" data-a="g-cat" data-c="' + sug + '">Usar ' + esc(cat(sug).n) + '</button>' : ''; }
+function sugHTML(g) { if (g.cat === 'ingreso' || g.cat === 'ahorro') return ''; const sug = !g.id ? sugerirCat(g.concepto) : null; return sug && sug !== g.cat ? ' · <button class="btn sm ghost" data-a="g-cat" data-c="' + sug + '">Usar ' + esc(cat(sug).n) + '</button>' : ''; }
 function dedTexto(g) {
-  if (g.cat === 'ahorro' || !(g.importe > 0)) return '';
+  if (g.cat === 'ahorro' || g.cat === 'ingreso' || !(g.importe > 0)) return '';
   const c = cat(g.cat); const k = movCalc(g); let ded;
   if (c.veh) { const v = veh(g.veh); ded = !v || !v.propio ? 'Vehículo personal: no deducible' : v.pct ? 'Deducible (' + v.pct + ' % por km de trabajo): IVA ' + eur(k.ivaDed) + ' · IRPF ' + eur(k.irpfDed) : 'Deducible según km de trabajo (fija el % en Hacienda)'; }
   else if (k.amortBase) ded = 'IVA deducible ' + eur(k.ivaDed) + ' · se amortiza ' + eur(k.amortBase / k.amortAnios) + ' al año durante ' + k.amortAnios + ' años';
@@ -451,25 +466,26 @@ function refrescarGasto() {
   const b = $('#g-ded'); if (b) { const t = dedTexto(G_EDIT); b.innerHTML = t ? '<div class="infobox">' + t + '</div>' : ''; }
 }
 function pintarGasto() {
-  const g = G_EDIT; const esAhorro = g.cat === 'ahorro';
+  const g = G_EDIT; const esIng = g.cat === 'ingreso'; const esAhorro = g.cat === 'ahorro' || esIng;
   const cats = CATS.slice().sort((a, b) => (a.fija || 99) - (b.fija || 99));
   const sug = !g.id ? sugerirCat(g.concepto) : null;
   const c = esAhorro ? null : cat(g.cat);
   const ded = dedTexto(g);
   const trabajos = S.facturas.filter((f) => f.estado !== 'borrador' || true).sort((a, b) => b.fecha.localeCompare(a.fecha)).slice(0, 25);
-  hoja('<div class="between"><button class="btn icon" data-a="cerrar" aria-label="Cerrar">' + ico('x') + '</button><div class="seg"><button class="' + (!esAhorro ? 'on' : '') + '" data-a="g-tipo" data-t="gasto">Gasto</button><button class="' + (esAhorro ? 'on' : '') + '" data-a="g-tipo" data-t="ahorro">Ahorro</button></div><span style="width:44px"></span></div>' +
+  hoja('<div class="between"><button class="btn icon" data-a="cerrar" aria-label="Cerrar">' + ico('x') + '</button><div class="seg"><button class="' + (!esAhorro ? 'on' : '') + '" data-a="g-tipo" data-t="gasto">Gasto</button><button class="' + (esIng ? 'on' : '') + '" data-a="g-tipo" data-t="ingreso">Ingreso</button><button class="' + (g.cat === 'ahorro' ? 'on' : '') + '" data-a="g-tipo" data-t="ahorro">Ahorro</button></div><span style="width:44px"></span></div>' +
     '<label class="f" style="align-items:center">Importe' + (esAhorro ? '' : ' (IVA incluido)') + '<input class="amount num" inputmode="decimal" id="g-imp" value="' + (g.importe ? String(g.importe).replace('.', ',') : '') + '" placeholder="0,00 €" data-g="importe"></label>' +
-    '<label class="f">Concepto<input class="in" id="g-con" value="' + esc(g.concepto) + '" placeholder="' + (esAhorro ? 'Ahorro del mes' : 'Repsol, Mercadona, vuelo…') + '" data-g="concepto" autocomplete="off"></label>' +
-    (esAhorro ? '<label class="f">Cuenta<select class="in" data-g="cuenta">' + ['BBVA', 'Metálico', 'Revolut', 'Otra'].map((x) => '<option' + (g.cuenta === x ? ' selected' : '') + '>' + x + '</option>').join('') + '</select></label>' :
+    '<label class="f">Concepto<input class="in" id="g-con" value="' + esc(g.concepto) + '" placeholder="' + (esIng ? 'Regalo de mamá' : esAhorro ? 'Ahorro del mes' : 'Repsol, Mercadona, vuelo…') + '" data-g="concepto" autocomplete="off"></label>' +
+    (esIng ? '<label class="f">Tipo de ingreso<select class="in" data-g="tipoIng">' + ['Regalo', 'Venta de algo', 'Devolución o reembolso', 'Bizum de amigos', 'Otro'].map((x) => '<option' + (g.tipoIng === x ? ' selected' : '') + '>' + x + '</option>').join('') + '</select></label><div class="infobox">No es un ingreso de tu actividad: suma a tu balance pero no cuenta para Hacienda.</div>' : esAhorro ? '<label class="f">Cuenta<select class="in" data-g="cuenta">' + ['BBVA', 'Metálico', 'Revolut', 'Otra'].map((x) => '<option' + (g.cuenta === x ? ' selected' : '') + '>' + x + '</option>').join('') + '</select></label>' :
       '<div class="f" style="display:flex;flex-direction:column;gap:8px"><span class="sub">Categoría<span id="g-sug">' + sugHTML(g) + '</span></span><div class="catgrid">' +
       cats.map((x) => '<button class="cat ' + (g.cat === x.id ? 'on' : '') + '" data-a="g-cat" data-c="' + x.id + '"><span style="color:' + x.col + '">' + catIco(x.id, 24) + '</span>' + esc(cat(x.id).n) + '</button>').join('') + '</div></div>') +
     (c && c.veh ? '<div style="display:flex;flex-direction:column;gap:8px"><span class="sub">Vehículo</span><div class="seg">' + S.vehiculos.map((v) => '<button class="' + (g.veh === v.id ? 'on' : '') + '" data-a="g-veh" data-v="' + v.id + '">' + esc(v.nombre) + '</button>').join('') + '</div></div>' : '') +
+    (c && c.veh ? '<div class="row"><label class="f f1">Litros (opcional)<input class="in" inputmode="decimal" value="' + (g.litros ? String(g.litros).replace('.', ',') : '') + '" data-g="litros"></label><label class="f f1">Nº factura o ticket<input class="in" value="' + esc(g.ticket || '') + '" data-g="ticket"></label></div>' : '') +
     (c && c.nota ? '<label class="f">Anotación (la lección)<input class="in" value="' + esc(g.nota || '') + '" data-g="nota" placeholder="Si llueve, no entrar en barrizales"></label>' : '') +
     '<div class="row"><label class="btn dash f1" style="cursor:pointer">' + ico('cam', 18) + (g.foto || g.fotoNueva ? 'Ticket añadido ✓' : 'Foto del ticket') + '<input type="file" accept="image/*" capture="environment" hidden data-file="ticket"></label><input type="date" class="in" style="width:auto" value="' + g.fecha + '" data-g="fecha" aria-label="Fecha"></div>' +
     (g.foto ? '<button class="btn ghost sm" data-a="ver-foto" data-id="' + g.foto + '">Ver ticket</button>' : '') +
     (!esAhorro && trabajos.length ? '<details' + (g.trabajo ? ' open' : '') + '><summary class="sub" style="cursor:pointer;padding:4px 0">Asociar a un trabajo (opcional)</summary><select class="in" data-g="trabajo" style="margin-top:8px"><option value="">Ninguno</option>' + trabajos.map((f) => '<option value="' + f.id + '"' + (g.trabajo === f.id ? ' selected' : '') + '>' + esc(f.num + ' · ' + (f.lineas[0] ? f.lineas[0].c : '')) + '</option>').join('') + '</select></details>' : '') +
     '<div id="g-ded">' + (ded ? '<div class="infobox">' + ded + '</div>' : '') + '</div>' +
-    '<div class="row">' + (g.id ? '<button class="btn danger" data-a="g-borrar">Borrar</button>' : '') + '<button class="btn pri f1" style="min-height:54px;font-size:16px" data-a="g-guardar">Guardar' + (esAhorro ? ' ahorro' : ' gasto') + '</button></div>');
+    '<div class="row">' + (g.id ? '<button class="btn danger" data-a="g-borrar">Borrar</button>' : '') + '<button class="btn pri f1" style="min-height:54px;font-size:16px" data-a="g-guardar">Guardar' + (esIng ? ' ingreso' : esAhorro ? ' ahorro' : ' gasto') + '</button></div>');
   if (!g.id) setTimeout(() => { const e = $('#g-imp'); if (e && !g.importe) e.focus(); }, 250);
 }
 function hoja(html) { const sh = $('#layer .sheet'); if (sh) { const st = sh.scrollTop; sh.innerHTML = html; sh.scrollTop = st; return; } $('#layer').innerHTML = '<div class="sheet-bg" data-a="cerrar-fondo"><div class="sheet" role="dialog" aria-modal="true">' + html + '</div></div>'; }
@@ -547,8 +563,13 @@ function vFactura(id) {
     '<div class="card"><span class="sub">Conceptos</span>' + f.lineas.map((l, i) => '<div style="display:flex;flex-direction:column;gap:6px"><div class="row"><input class="in f1" placeholder="Concepto" value="' + esc(l.c) + '" data-ln="' + i + '" data-k="c" aria-label="Concepto"><input class="in num" style="width:110px;text-align:right" inputmode="decimal" placeholder="0" value="' + (l.imp ? String(l.imp).replace('.', ',') : '') + '" data-ln="' + i + '" data-k="imp" aria-label="Importe"><button class="btn icon sm" data-a="quitar-linea" data-i="' + i + '" aria-label="Quitar concepto">' + ico('x', 14) + '</button></div>' +
       (l.det != null && l.det !== '' || l.showDet ? '<input class="in" style="margin-left:16px;width:calc(100% - 16px);min-height:38px;font-size:13px" placeholder="+ línea de detalle" value="' + esc(l.det || '') + '" data-ln="' + i + '" data-k="det" aria-label="Línea de detalle">' : '') + '</div>').join('') +
     '<div class="row"><button class="btn dash sm" data-a="add-linea">+ Concepto</button><button class="btn dash sm" data-a="add-det">+ Línea de detalle</button></div></div>' +
+    tarjetaEquipoFactura(f) +
     '<div class="card" style="gap:6px;font-size:14px"><div class="between"><span class="sub">Subtotal</span><span class="num" id="t-base">' + eur(t.base) + '</span></div><div class="between"><span class="sub">IVA (' + S.ajustes.ivaPct + ' %)</span><span class="num" id="t-iva">' + eur(t.iva) + '</span></div><div class="between"><span class="sub">IRPF (' + S.ajustes.irpfPct + ' %)</span><span class="num" id="t-irpf">−' + eur(t.irpf) + '</span></div><div class="between" style="border-top:1px solid var(--line);padding-top:8px;font-weight:700;font-size:17px"><span>Total</span><span class="num" id="t-tot">' + eur(t.total) + '</span></div></div>' +
-    '<details class="card"' + (f.km || gastos.length ? ' open' : '') + '><summary style="cursor:pointer;font-weight:600">Desplazamiento y gastos del trabajo</summary><div class="row" style="margin-top:10px"><label class="f f1">Km (ida y vuelta)<input class="in" inputmode="numeric" value="' + (f.km || '') + '" data-fx="km"></label><label class="f f1">Vehículo<select class="in" data-fx="veh"><option value="">—</option>' + S.vehiculos.filter((v) => v.propio).map((v) => '<option value="' + v.id + '"' + (f.veh === v.id ? ' selected' : '') + '>' + esc(v.nombre) + '</option>').join('') + '</select></label></div>' +
+    '<details class="card"' + (viajesDe(f).length || gastos.length ? ' open' : '') + '><summary style="cursor:pointer;font-weight:600">Desplazamientos y gastos del trabajo' + (viajesDe(f).length ? ' · ' + viajesDe(f).reduce((a, v) => a + (+v.km || 0), 0) + ' km' : '') + '</summary>' +
+    '<span class="sub" style="font-size:12px;margin-top:8px">Un día por fila, como en tu Excel de kilometraje. Salida desde ' + esc(S.ajustes.origen || 'EL MOLAR') + '.</span>' +
+    viajesDe(f).map((v, i) => '<div style="background:var(--s1);border-radius:14px;padding:10px;display:flex;flex-direction:column;gap:8px;margin-top:8px"><div class="row"><input class="in f1" placeholder="Destino (dirección o lugar)" value="' + esc(v.destino) + '" data-vj="' + i + '" data-k="destino" aria-label="Destino"><button class="btn icon sm" data-a="quitar-viaje" data-i="' + i + '" aria-label="Quitar día">' + ico('x', 14) + '</button></div>' +
+      '<div class="row wrap"><label class="f" style="flex:2 1 140px">Fecha<input type="date" class="in" value="' + v.fecha + '" data-vj="' + i + '" data-k="fecha"></label><label class="f" style="flex:1 1 70px">Km<input class="in" inputmode="numeric" value="' + (v.km || '') + '" data-vj="' + i + '" data-k="km"></label><label class="f" style="flex:2 1 120px">Vehículo<select class="in" data-vj="' + i + '" data-k="veh"><option value="">—</option>' + S.vehiculos.filter((x) => x.propio).map((x) => '<option value="' + x.id + '"' + (v.veh === x.id ? ' selected' : '') + '>' + esc(x.nombre) + '</option>').join('') + '</select></label><label class="row" style="gap:6px;font-size:13px;align-self:flex-end;min-height:46px"><input type="checkbox"' + (v.iv !== false ? ' checked' : '') + ' data-vj="' + i + '" data-k="iv">Ida y vuelta</label></div></div>').join('') +
+    '<button class="btn dash sm" style="margin-top:8px" data-a="add-viaje">+ Día de desplazamiento</button>' +
     '<div class="sub" style="font-size:12px;margin-top:8px">Gastos asociados: ' + (gastos.length ? gastos.map((m) => esc(m.concepto) + ' ' + eur(m.importe)).join(', ') : 'ninguno (asócialos al apuntar un gasto)') + '</div>' +
     '<div class="between" style="font-size:13px;margin-top:6px"><span class="sub">Te deja limpio</span><b class="num">' + eur(t.base - gb) + '</b></div></details>' +
     '<div class="row wrap">' +
@@ -571,7 +592,7 @@ async function pintarPreview(id) {
     '<div style="display:flex;gap:2.4cqw"><div class="bx" style="flex:1"><span style="font-size:2.1cqw">' + esc(aj.nombre) + '</span><br><span style="font-size:1.9cqw">' + esc(aj.nif) + '</span><br><span style="font-size:1.6cqw">' + esc(aj.direccion1) + '<br>' + esc(aj.direccion2) + '</span></div>' +
     '<div class="bx" style="flex:1;font-size:2.1cqw">' + (c ? [c.nombre, c.nif ? 'NIF: ' + c.nif : '', c.dir1, c.dir2].filter(Boolean).map(esc).join('<br>') : '[Cliente]') + '</div></div>' +
     '<div class="hd"><span>CONCEPTO</span><span>IMPORTE</span></div><div style="flex:1;display:flex;flex-direction:column;gap:1.3cqw;font-size:1.75cqw">' +
-    f.lineas.map((l) => '<div style="display:flex;justify-content:space-between;gap:2cqw"><span>- ' + esc(l.c) + '</span><span style="font-size:1.95cqw">' + e(+l.imp || 0) + '</span></div>' + (l.det ? '<span>' + esc(l.det) + '</span>' : '')).join('') + '</div>' +
+    f.lineas.map((l) => '<div style="display:flex;justify-content:space-between;gap:2cqw"><span>- ' + esc(l.c) + '</span><span style="font-size:1.95cqw">' + e(+l.imp || 0) + '</span></div>' + (l.det ? '<span>' + esc(l.det) + '</span>' : '')).join('') + (equipoCobrado(f) > 0 ? '<div style="display:flex;justify-content:space-between;gap:2cqw"><span>- Alquiler de equipo</span><span style="font-size:1.95cqw">' + e(equipoCobrado(f)) + '</span></div><div style="font-size:1.45cqw;line-height:1.5;color:#444;padding-left:1.4cqw">' + (f.equipo || []).filter((x) => !x.incluido && !x.propio).map((x) => esc(detalleEq(x))).join('<br>') + '</div>' : '') + '</div>' +
     '<div class="tot"><div style="display:flex;justify-content:space-between"><b>SUBTOTAL:</b><span>' + e(t.base) + '</span></div><div style="display:flex;justify-content:space-between"><b>IVA (' + aj.ivaPct + '%):</b><span>' + e(t.iva) + '</span></div><div style="display:flex;justify-content:space-between"><b>IRPF (' + aj.irpfPct + '%):</b><span>' + e(t.irpf) + '</span></div><div style="display:flex;justify-content:space-between"><b>TOTAL:</b><span>' + e(t.total) + '</span></div></div>' +
     '<div style="border-top:.4cqw solid #1e1e1e;padding-top:1.2cqw;text-align:center;line-height:1.6;font-size:1.6cqw">Condiciones de pago: TRANSFERENCIA<br><b>' + esc(aj.iban || '[IBAN en Ajustes]') + '</b><br><span style="color:#7a7a7a;font-size:1.25cqw">Plazo máximo de pago: ' + fechaES(venceFactura(f)) + '</span></div></div>' +
     '<div class="pie">' + esc([aj.telefono, (aj.nombre || '').toUpperCase(), aj.pieActividad].filter(Boolean).join(' · ').toUpperCase()) + '<br>' + esc([aj.nif, [aj.direccion1, aj.direccion2].filter(Boolean).join(', ')].filter(Boolean).join(' . ').toUpperCase()) + '</div>';
@@ -579,7 +600,7 @@ async function pintarPreview(id) {
 function refrescarTotales() {
   const f = F_EDIT; if (!f) return; const t = totalesFactura(f);
   const set = (id, v) => { const e = $('#' + id); if (e) e.textContent = v; };
-  set('t-base', eur(t.base)); set('t-iva', eur(t.iva)); set('t-irpf', '−' + eur(t.irpf)); set('t-tot', eur(t.total));
+  set('t-base', eur(t.base)); set('eq-total', eur(equipoCobrado(f))); set('t-iva', eur(t.iva)); set('t-irpf', '−' + eur(t.irpf)); set('t-tot', eur(t.total));
   clearTimeout(refrescarTotales.t); refrescarTotales.t = setTimeout(() => pintarPreview(f.id), 120);
 }
 function versionar(f) {
@@ -663,10 +684,10 @@ function vHacienda() {
     '<div class="grid home-grid">' + qs.map(({ q, h }) => '<div class="card" style="' + (q === curQ ? 'border:1px solid var(--ac)' : '') + '"><div class="between"><b>' + q + 'º trimestre' + (q === curQ ? ' · en curso' : '') + '</b><span class="sub">' + h.nFact + ' facturas</span></div>' +
       '<span class="sub" style="font-weight:600;color:var(--soft)">Modelo 303 · IVA</span>' + row('IVA de tus facturas', eur(h.ivaRep)) + row('IVA deducible de gastos', '−' + eur(h.ivaSop)) + row(h.res303 >= 0 ? 'A pagar' : 'A compensar', eur(Math.abs(h.res303)), 1) +
       '<span class="sub" style="font-weight:600;color:var(--soft);margin-top:6px">Modelo 130 · IRPF (acumulado desde enero)</span>' + row('Ingresos', eur(h.ingresos)) + row('Gastos deducibles', '−' + eur(h.gastos)) + row('Difícil justificación', '−' + eur(h.gdj)) + row('Rendimiento', eur(h.rend)) + row('20 %', eur(h.cuota)) + row('Retenciones de clientes', '−' + eur(h.ret)) + row('Pagado en trimestres anteriores', '−' + eur(h.previos)) + row('A pagar', eur(h.pago130), 1) +
-      '<div class="row wrap" style="margin-top:6px"><button class="btn sm ghost" data-a="exportar" data-q="' + q + '">' + ico('dl', 14) + 'Exportar para el gestor</button>' +
+      '<div class="row wrap" style="margin-top:6px"><button class="btn sm ghost" data-a="exportar" data-q="' + q + '">' + ico('dl', 14) + 'Exportar para el gestor</button><button class="btn sm ghost" data-a="kms" data-q="' + q + '">' + ico('dl', 14) + 'Kilometraje (Excel)</button>' +
       (h.res303 > 0 && !pagado(q, '303') ? '<button class="btn sm ghost" data-a="pagado" data-q="' + q + '" data-m="303" data-v="' + r2(h.res303) + '">303 pagado</button>' : '') + (h.pago130 > 0 && !pagado(q, '130') ? '<button class="btn sm ghost" data-a="pagado" data-q="' + q + '" data-m="130" data-v="' + r2(h.pago130) + '">130 pagado</button>' : '') + '</div></div>').join('') + '</div>' +
     '<div class="grid home-grid" style="margin-top:14px"><div class="card"><b>Gasolina y km de trabajo ' + y + '</b><span class="sub" style="font-size:12px">Pon el % de uso para trabajo que te diga tu gestor. Se aplica al IVA y al IRPF de cada repostaje.</span>' +
-    S.vehiculos.filter((v) => v.propio).map((v) => { const g = S.movimientos.filter((m) => m.cat === 'gasolina' && m.veh === v.id && m.fecha.startsWith(String(y))); const km = S.facturas.filter((f) => f.veh === v.id && f.fecha.startsWith(String(y))).reduce((s, f) => s + (+f.km || 0), 0); return '<div class="between" style="font-size:13px"><span><b>' + esc(v.nombre) + '</b> · ' + eur(g.reduce((s, m) => s + m.importe, 0)) + ' · ' + km + ' km de trabajo</span><label class="row" style="gap:6px"><input class="in" style="width:70px;min-height:38px" inputmode="numeric" value="' + (v.pct || 0) + '" data-vpct="' + v.id + '" aria-label="% de trabajo de ' + esc(v.nombre) + '">%</label></div>'; }).join('') + '</div>' +
+    S.vehiculos.filter((v) => v.propio).map((v) => { const g = S.movimientos.filter((m) => m.cat === 'gasolina' && m.veh === v.id && m.fecha.startsWith(String(y))); const km = kmVeh(v.id, y + '-01-01', y + '-12-31'); return '<div class="between" style="font-size:13px"><span><b>' + esc(v.nombre) + '</b> · ' + eur(g.reduce((s, m) => s + m.importe, 0)) + ' · ' + km + ' km de trabajo</span><label class="row" style="gap:6px"><input class="in" style="width:70px;min-height:38px" inputmode="numeric" value="' + (v.pct || 0) + '" data-vpct="' + v.id + '" aria-label="% de trabajo de ' + esc(v.nombre) + '">%</label></div>'; }).join('') + '</div>' +
     '<div class="card"><b>Amortizaciones ' + y + '</b>' + (am.items.length ? am.items.map((it) => row(esc(it.m.concepto) + ' (año ' + it.anio + ' de ' + it.de + ')', eur(it.anual))).join('') + row('Total del año', eur(am.total), 1) : '<span class="sub">Ninguna compra amortizable.</span>') +
     '<button class="btn ghost sm" data-a="resumen-anual">' + ico('dl', 14) + 'Resumen anual para la renta</button></div></div>';
 }
@@ -679,10 +700,47 @@ async function exportar(y, q) {
   files.push({ name: 'ingresos.csv', data: enc.encode(csv([['Factura', 'Fecha', 'Cliente', 'NIF', 'Concepto', 'Base', 'IVA', 'IRPF', 'Total', 'Estado', 'Cobrada'], ...fs.map((f) => { const t = totalesFactura(f); const c = S.clientes.find((x) => x.id === f.cliente) || {}; return [f.num, fechaES(f.fecha), c.nombre || '', c.nif || '', f.lineas.map((l) => l.c).join(' / '), n2(t.base), n2(t.iva), n2(t.irpf), n2(t.total), f.estado, fechaES(f.fechaCobro)]; })])) });
   files.push({ name: 'gastos.csv', data: enc.encode(csv([['Fecha', 'Concepto', 'Categoría', 'Tipo', 'Vehículo', 'Total', 'Base', 'IVA deducible', 'Gasto deducible IRPF', 'Ticket'], ...ms.map((m) => { const k = movCalc(m); const c = cat(m.cat); return [fechaES(m.fecha), m.concepto, c.n, c.t, m.veh ? (veh(m.veh) || {}).nombre : '', n2(m.importe), n2(k.base), n2(k.ivaDed), n2(k.irpfDed), m.foto ? 'tickets/' + m.fecha + '_' + m.id + '.jpg' : '']; })])) });
   files.push({ name: 'resumen.csv', data: enc.encode(csv([['Concepto', 'Importe'], ['303 · IVA repercutido', n2(h.ivaRep)], ['303 · IVA soportado deducible', n2(h.ivaSop)], ['303 · Resultado', n2(h.res303)], ['130 · Ingresos acumulados', n2(h.ingresos)], ['130 · Gastos deducibles acumulados', n2(h.gastos)], ['130 · Difícil justificación', n2(h.gdj)], ['130 · Rendimiento', n2(h.rend)], ['130 · Retenciones acumuladas', n2(h.ret)], ['130 · Pagos anteriores', n2(h.previos)], ['130 · A pagar', n2(h.pago130)]])) });
+  files.push({ name: 'kilometraje-' + q + 'T-' + y + '.xlsx', data: await kilometrajeXlsx(y, q) });
   for (const f of fs) files.push({ name: 'facturas/' + nombrePDF(f), data: await pdfDe(f) });
   for (const m of ms.filter((x) => x.foto)) { const b = await DB.get('fotos', m.foto); if (b) files.push({ name: 'tickets/' + m.fecha + '_' + m.id + '.jpg', data: new Uint8Array(b) }); }
   download(y + '-' + q + 'T-gestor.zip', makeZip(files), 'application/zip');
   toast('Exportado ' + q + 'º trimestre');
+}
+async function kilometrajeXlsx(y, q) {
+  const qa = y + '-' + pad((q - 1) * 3 + 1) + '-01', qb = isoDate(new Date(y, q * 3, 0));
+  const ord = ['', 'er', 'º', 'er', 'º'][q];
+  const viajes = [];
+  S.facturas.filter((f) => f.estado !== 'borrador' || viajesDe(f).length).forEach((f) => viajesDe(f).forEach((v) => { if (inRange(v.fecha, qa, qb)) viajes.push({ v, f }); }));
+  viajes.sort((a, b) => a.v.fecha.localeCompare(b.v.fecha) || a.f.num.localeCompare(b.f.num, 'es', { numeric: true }));
+  const gas = S.movimientos.filter((m) => m.cat === 'gasolina' && inRange(m.fecha, qa, qb) && (veh(m.veh) || {}).propio).sort((a, b) => a.fecha.localeCompare(b.fecha));
+  const cliBloque = (id) => { const c = S.clientes.find((x) => x.id === id); return c ? [c.nombre, c.nif ? 'NIF: ' + c.nif : '', c.dir1, c.dir2].filter(Boolean).join('\n') : ''; };
+  const totKm = viajes.reduce((a, x) => a + (+x.v.km || 0), 0);
+  const fechas = viajes.map((x) => x.v.fecha);
+  const corto = (iso) => { const [yy, mm, dd] = iso.split('-'); return +dd + '-' + +mm + '-' + yy.slice(2); };
+  const rows = [];
+  rows[0] = [{ v: 'KILOMETRAJE ' + q + ord + ' TRIMESTRE ' + y, s: 6 }];
+  rows[2] = [{ v: 'Nombre', s: 5 }, S.ajustes.nombre || '', null, { v: 'Por período', s: 5 }, fechas.length ? 'De ' + corto(fechas[0]) + ' a ' + corto(fechas[fechas.length - 1]) : 'Sin desplazamientos'];
+  rows[3] = [{ v: 'NIF', s: 5 }, S.ajustes.nif || '', null, { v: 'Kilometraje total', s: 5 }, { v: totKm, s: 7 }];
+  rows[5] = [{ v: 'DESPLAZAMIENTOS', s: 5 }, null, null, null, null, null, null, null, null, null, null, { v: 'FACTURAS GASOLINA', s: 5 }];
+  const H = (t) => ({ v: t, s: 1 });
+  rows[6] = ['Fecha', 'Día semana', 'Ubicación inicial', 'Destino', 'Cliente', 'Ida/vuelta', 'Km', 'Factura', 'Vehículo', 'Litros consumidos', null, 'Fecha', 'Nº factura', 'Litros suministrados', 'Acreedor', 'Importe', 'Vehículo'].map((t) => t ? H(t) : null);
+  const n = Math.max(viajes.length, gas.length);
+  for (let i = 0; i < n; i++) {
+    const r = new Array(17).fill(null);
+    const x = viajes[i];
+    if (x) {
+      const vh = veh(x.v.veh);
+      r[0] = { v: x.v.fecha, date: true }; r[1] = DIAS[parseD(x.v.fecha).getDay()]; r[2] = (S.ajustes.origen || 'EL MOLAR').toUpperCase(); r[3] = x.v.destino || '';
+      r[4] = { v: cliBloque(x.f.cliente), s: 3 }; r[5] = x.v.iv !== false ? 'SI' : 'NO'; r[6] = { v: +x.v.km || 0, s: 7 }; r[7] = x.f.num; r[8] = vh ? vh.nombre + ' (' + vh.modelo + ')' : '';
+      r[9] = vh ? { v: r2((+x.v.km || 0) * consumoDe(vh) / 100), s: 4 } : null;
+    }
+    const g = gas[i];
+    if (g) { const vh = veh(g.veh); r[11] = { v: g.fecha, date: true }; r[12] = g.ticket || ''; r[13] = g.litros ? { v: g.litros, s: 4 } : null; r[14] = g.concepto; r[15] = { v: g.importe, s: 4 }; r[16] = vh ? vh.nombre : ''; }
+    rows[7 + i] = r;
+  }
+  const t = 7 + n + 1;
+  rows[t] = [{ v: 'TOTAL', s: 5 }, null, null, null, null, null, { v: totKm, s: 7 }, null, null, { v: r2(viajes.reduce((a, x) => a + (veh(x.v.veh) ? (+x.v.km || 0) * consumoDe(veh(x.v.veh)) / 100 : 0), 0)), s: 4 }, null, { v: 'TOTAL', s: 5 }, null, { v: r2(gas.reduce((a, g) => a + (+g.litros || 0), 0)), s: 4 }, null, { v: r2(gas.reduce((a, g) => a + g.importe, 0)), s: 4 }];
+  return makeXlsx('Kilometraje ' + q + 'T ' + y, rows, { widths: [12, 12, 14, 34, 34, 10, 8, 12, 18, 12, 3, 12, 20, 12, 22, 11, 12], freeze: 7 });
 }
 const n2 = (n) => (r2(n || 0)).toFixed(2).replace('.', ',');
 function resumenAnual(y) {
@@ -695,12 +753,155 @@ function resumenAnual(y) {
   download('resumen-' + y + '.csv', csv(rows), 'text/csv');
 }
 
+/* ---------- Equipo ---------- */
+const CATS_EQ = ['Cámaras', 'Lentes', 'Accesorios cámaras', 'Luces', 'Sonido', 'Cables', 'Alimentación', 'Transporte', 'Otros'];
+const coincide = (txt, q) => { const t = txt.toLowerCase(); return q.toLowerCase().split(/\s+/).filter(Boolean).every((w) => t.includes(w)); };
+function precioAlquiler(p, dias, qty) { dias = Math.max(1, +dias || 1); qty = Math.max(1, +qty || 1); const k = dias === 1 ? 1 : dias === 2 ? 0.85 : 0.75; return r2(p * dias * k * qty); }
+const artDe = (id) => S.equipo.find((a) => a.id === id);
+const packDe = (id) => S.packs.find((p) => p.id === id);
+const unidadesActivas = (a) => (a.unidades || []).filter((u) => !u.estado || u.estado === 'activo');
+function equipoCobrado(f) { return r2((f.equipo || []).filter((e) => !e.incluido && !e.propio).reduce((s, e) => s + (+e.precio || 0), 0)); }
+function nombreEq(e) { const x = e.tipo === 'pack' ? packDe(e.id) : artDe(e.id); return x ? x.nombre : (e.nombre || 'Equipo borrado'); }
+function detalleEq(e) { return (e.qty > 1 ? e.qty + '× ' : '') + nombreEq(e) + ' · ' + e.dias + (e.dias == 1 ? ' día' : ' días'); }
+/* Reparte lo ganado y los días entre artículos (los packs se reparten según el precio de sus piezas) */
+function statsEquipo() {
+  const st = {}; const sp = {};
+  const add = (id, euros, dias, propio, f) => { const o = st[id] || (st[id] = { ing: 0, dias: 0, diasPropio: 0, trabajos: new Set(), ultimo: '' }); o.ing += euros; if (propio) o.diasPropio += dias; else o.dias += dias; o.trabajos.add(f.id); if (f.fecha > o.ultimo) o.ultimo = f.fecha; };
+  S.facturas.filter((f) => f.estado !== 'borrador').forEach((f) => (f.equipo || []).forEach((e) => {
+    const euros = e.propio ? 0 : (+e.precio || 0); const dias = (+e.dias || 1) * (+e.qty || 1);
+    if (e.tipo === 'pack') {
+      const p = packDe(e.id); const o = sp[e.id] || (sp[e.id] = { ing: 0, veces: 0 }); o.ing += euros; o.veces++;
+      const piezas = p ? (p.items || []).filter((it) => artDe(it.art)) : [];
+      const tot = piezas.reduce((s, it) => s + (artDe(it.art).precioDia || 0) * (it.qty || 1), 0);
+      piezas.forEach((it) => { const w = tot ? (artDe(it.art).precioDia || 0) * (it.qty || 1) / tot : 1 / piezas.length; add(it.art, euros * w, (+e.dias || 1) * (it.qty || 1) * (+e.qty || 1), e.propio, f); });
+    } else add(e.id, euros, dias, e.propio, f);
+  }));
+  S.equipo.forEach((a) => {
+    const o = st[a.id] || (st[a.id] = { ing: 0, dias: 0, diasPropio: 0, trabajos: new Set(), ultimo: '' });
+    o.coste = (a.unidades || []).reduce((s, u) => s + (+u.coste || 0), 0);
+    o.ventas = (a.unidades || []).filter((u) => u.estado === 'vendido').reduce((s, u) => s + (+u.venta || 0), 0);
+    o.total = o.ing + o.ventas; o.pct = o.coste ? o.total / o.coste * 100 : null; o.n = o.trabajos.size;
+  });
+  return { st, sp };
+}
+function barraPct(pct) {
+  if (pct == null) return '<span class="sub" style="font-size:12px">Sin precio de compra</span>';
+  const col = pct >= 100 ? 'var(--ok)' : pct >= 50 ? 'var(--warn)' : 'var(--ac)';
+  return '<div class="row" style="gap:8px"><div class="bar f1"><div style="width:' + Math.min(100, Math.max(2, pct)) + '%;background:' + col + '"></div></div><span style="font-size:12px;color:' + col + ';min-width:44px;text-align:right">' + (PRIV ? '••' : Math.round(pct)) + ' %</span></div>';
+}
+function vEquipo() {
+  const { st, sp } = statsEquipo();
+  const f = UI.eqCat || 'todos';
+  let arts = S.equipo.slice();
+  if (f !== 'todos') arts = arts.filter((a) => a.cat === f);
+  if (UI.eqQ) arts = arts.filter((a) => coincide(a.nombre + ' ' + a.cat + ' ' + (a.nota || ''), UI.eqQ));
+  const o = UI.eqOrden || 'cat';
+  const sorters = { cat: (a, b) => CATS_EQ.indexOf(a.cat) - CATS_EQ.indexOf(b.cat) || a.nombre.localeCompare(b.nombre), rent: (a, b) => (st[b.id].pct ?? -1) - (st[a.id].pct ?? -1), ing: (a, b) => st[b.id].total - st[a.id].total, coste: (a, b) => st[b.id].coste - st[a.id].coste, uso: (a, b) => (st[b.id].dias + st[b.id].diasPropio) - (st[a.id].dias + st[a.id].diasPropio) };
+  arts.sort(sorters[o] || sorters.cat);
+  const inv = S.equipo.reduce((s, a) => s + st[a.id].coste, 0), gen = S.equipo.reduce((s, a) => s + st[a.id].total, 0);
+  const sinCoste = S.equipo.filter((a) => !st[a.id].coste).length;
+  let html = '', last = '';
+  arts.forEach((a) => {
+    if (o === 'cat' && a.cat !== last) { html += '<div class="sub" style="padding:14px 4px 4px;font-weight:600">' + esc(a.cat) + '</div>'; last = a.cat; }
+    const s = st[a.id]; const act = unidadesActivas(a).length; const tot = (a.unidades || []).length;
+    html += '<button class="item" data-a="ver-art" data-id="' + a.id + '" style="flex-direction:column;align-items:stretch;gap:6px"><div class="between"><span style="font-size:14px;font-weight:500">' + (act > 1 ? act + '× ' : '') + esc(a.nombre) + (tot > act ? ' <span class="pill">' + (tot - act) + ' de baja</span>' : '') + '</span><span class="sub" style="font-size:12px;white-space:nowrap">' + (a.precioDia ? eur(a.precioDia) + '/día' : 'sin precio') + '</span></div>' +
+      barraPct(s.pct) + '<div class="sub" style="font-size:12px">' + (s.coste ? 'Costó ' + eur(s.coste) + ' · ' : '') + 'Generado ' + eur(s.total) + ' · ' + s.dias + ' días alquilado' + (s.diasPropio ? ' · ' + s.diasPropio + ' de uso propio' : '') + '</div></button>';
+  });
+  const packs = S.packs.map((p) => '<button class="item" data-a="ver-pack" data-id="' + p.id + '"><span class="ico" style="background:#FF4D9D22;color:var(--ac)">' + catIco('material', 20) + '</span><span class="f1"><div style="font-size:14px">' + esc(p.nombre) + '</div><div class="sub" style="font-size:12px">' + (p.items || []).length + ' piezas · alquilado ' + ((sp[p.id] || {}).veces || 0) + ' veces · ' + eur((sp[p.id] || {}).ing || 0) + '</div></span><span class="sub">' + eur(p.precioDia || 0) + '/día</span></button>').join('');
+  return '<div class="top"><h1>Equipo</h1><div class="row"><button class="btn" data-a="nuevo-pack">' + ico('plus', 16) + 'Pack</button><button class="btn pri" data-a="nuevo-art">' + ico('plus', 16) + 'Equipo</button></div></div>' +
+    (S.equipo.length ? '' : '<div class="infobox" style="margin-bottom:12px">Aún no hay equipo. Importa <b>equipo.json</b> en Ajustes › Datos o añádelo a mano.</div>') +
+    '<div class="hero" style="margin-bottom:14px"><span class="lbl">Rentabilidad de tu equipo</span><div class="row"><div class="f1"><div class="lbl">Invertido</div><div class="num" style="font-size:20px;font-weight:700">' + eur(inv) + '</div></div><div class="f1"><div class="lbl">Generado</div><div class="num" style="font-size:20px;font-weight:700;color:var(--ok)">' + eur(gen) + '</div></div></div>' + barraPct(inv ? gen / inv * 100 : null) +
+    (sinCoste ? '<span class="lbl">' + sinCoste + ' artículos sin precio de compra: ábrelos para añadirlo.</span>' : '') + '</div>' +
+    (S.packs.length ? '<div class="card" style="padding:6px 12px;margin-bottom:12px"><b style="padding:8px 4px 0">Packs</b>' + packs + '</div>' : '') +
+    '<div class="row" style="margin-bottom:8px"><input class="in f1" placeholder="Buscar equipo" value="' + esc(UI.eqQ || '') + '" data-in="eqQ" aria-label="Buscar equipo"><select class="in" style="width:auto" data-in="eqOrden" aria-label="Ordenar"><option value="cat"' + (o === 'cat' ? ' selected' : '') + '>Por categoría</option><option value="rent"' + (o === 'rent' ? ' selected' : '') + '>Más rentable</option><option value="ing"' + (o === 'ing' ? ' selected' : '') + '>Más generado</option><option value="coste"' + (o === 'coste' ? ' selected' : '') + '>Más caro</option><option value="uso"' + (o === 'uso' ? ' selected' : '') + '>Más usado</option></select></div>' +
+    '<div class="chips" style="margin-bottom:8px">' + ['todos'].concat(CATS_EQ).map((c) => '<button class="chip ' + (f === c ? 'on' : '') + '" data-a="eqcat" data-c="' + c + '">' + (c === 'todos' ? 'Todo' : c) + '</button>').join('') + '</div>' +
+    '<div class="card" style="padding:6px 12px" id="eq-res">' + (html || '<span class="sub" style="padding:12px 0">Nada con este filtro.</span>') + '</div>';
+}
+function vArticulo(id) {
+  const a = artDe(id); if (!a) return '<p class="sub">No encontrado.</p>';
+  const s = statsEquipo().st[a.id];
+  const hist = S.facturas.filter((f) => (f.equipo || []).some((e) => (e.tipo === 'art' && e.id === a.id) || (e.tipo === 'pack' && (packDe(e.id) || { items: [] }).items.some((it) => it.art === a.id)))).sort((x, y) => y.fecha.localeCompare(x.fecha));
+  return '<div class="top"><div class="row"><a href="#equipo" class="btn icon" aria-label="Volver a equipo">' + ico('left') + '</a><h1 style="font-size:22px">' + esc(a.nombre || 'Equipo nuevo') + '</h1></div></div>' +
+    '<div class="grid home-grid"><div class="card"><label class="f">Nombre<input class="in" value="' + esc(a.nombre) + '" data-ex="nombre"></label>' +
+    '<div class="row wrap"><label class="f" style="flex:2 1 160px">Categoría<select class="in" data-ex="cat">' + CATS_EQ.map((c) => '<option' + (a.cat === c ? ' selected' : '') + '>' + c + '</option>').join('') + '</select></label><label class="f" style="flex:1 1 100px">Precio alquiler €/día<input class="in" inputmode="decimal" value="' + (a.precioDia ? String(a.precioDia).replace('.', ',') : '') + '" data-ex="precioDia"></label></div>' +
+    '<span class="sub" style="font-size:12px">' + (a.precioDia ? '1 día ' + eur(precioAlquiler(a.precioDia, 1)) + ' · 2 días ' + eur(precioAlquiler(a.precioDia, 2)) + ' · 3 días ' + eur(precioAlquiler(a.precioDia, 3)) + ' (por unidad)' : 'Sin precio: no se alquila suelto') + '</span>' +
+    '<label class="f">Notas<input class="in" value="' + esc(a.nota || '') + '" data-ex="nota"></label>' +
+    '<div class="row"><button class="btn danger sm" data-a="borrar-art" data-id="' + a.id + '">Borrar</button><a href="#equipo" class="btn pri f1">Guardar</a></div></div>' +
+    '<div class="card"><b>Rentabilidad</b>' + barraPct(s.pct) + ((a.unidades || []).filter((u) => !u.coste).length && (a.unidades || []).some((u) => u.coste) ? '<span class="sub" style="font-size:12px;color:var(--warn)">Faltan precios de ' + (a.unidades || []).filter((u) => !u.coste).length + ' unidades: el porcentaje sale más alto de lo real.</span>' : '') +
+    '<div class="between"><span class="sub">Costó</span><b class="num">' + eur(s.coste) + '</b></div><div class="between"><span class="sub">Generado en alquileres</span><b class="num">' + eur(s.ing) + '</b></div>' + (s.ventas ? '<div class="between"><span class="sub">Vendido por</span><b class="num">' + eur(s.ventas) + '</b></div>' : '') +
+    '<div class="between"><span class="sub">' + (s.total >= s.coste && s.coste ? 'Ganancia neta' : 'Falta por recuperar') + '</span><b class="num" style="color:' + (s.total >= s.coste && s.coste ? 'var(--ok)' : 'var(--tx)') + '">' + eur(Math.abs(s.total - s.coste)) + '</b></div>' +
+    '<div class="between"><span class="sub">Días alquilado · uso propio</span><span>' + s.dias + ' · ' + s.diasPropio + '</span></div><div class="between"><span class="sub">Trabajos</span><span>' + s.n + (s.ultimo ? ' · último ' + fechaES(s.ultimo) : '') + '</span></div>' +
+    (s.dias ? '<div class="between"><span class="sub">Media por día alquilado</span><span class="num">' + eur(s.ing / s.dias) + '</span></div>' : '') + '</div>' +
+    '<div class="card"><div class="between"><b>Unidades</b><button class="btn sm ghost" data-a="add-unidad">' + ico('plus', 14) + 'Unidad</button></div><span class="sub" style="font-size:12px">Precio de compra sin IVA (lo que realmente te cuesta, porque el IVA lo recuperas).</span>' +
+    (a.unidades || []).map((u, i) => '<div style="background:var(--s1);border-radius:14px;padding:10px;display:flex;flex-direction:column;gap:8px;' + (u.estado && u.estado !== 'activo' ? 'opacity:.6' : '') + '"><div class="between"><b>Unidad ' + (i + 1) + (u.estado === 'vendido' ? ' · vendida' : u.estado === 'roto' ? ' · rota' : '') + '</b><button class="btn icon sm" data-a="quitar-unidad" data-i="' + i + '" aria-label="Quitar unidad ' + (i + 1) + '">' + ico('x', 14) + '</button></div>' +
+      '<div class="row wrap"><label class="f" style="flex:1 1 120px">Fecha de compra<input type="date" class="in" value="' + (u.fecha || '') + '" data-ux="' + i + '" data-k="fecha"></label><label class="f" style="flex:1 1 100px">Precio de compra €<input class="in" inputmode="decimal" value="' + (u.coste ? String(u.coste).replace('.', ',') : '') + '" data-ux="' + i + '" data-k="coste"></label></div>' +
+      '<div class="row wrap"><label class="f" style="flex:1 1 120px">Estado<select class="in" data-ux="' + i + '" data-k="estado"><option value="activo"' + (!u.estado || u.estado === 'activo' ? ' selected' : '') + '>En uso</option><option value="vendido"' + (u.estado === 'vendido' ? ' selected' : '') + '>Vendida</option><option value="roto"' + (u.estado === 'roto' ? ' selected' : '') + '>Rota o perdida</option></select></label>' +
+      (u.estado === 'vendido' ? '<label class="f" style="flex:1 1 100px">Vendida por €<input class="in" inputmode="decimal" value="' + (u.venta ? String(u.venta).replace('.', ',') : '') + '" data-ux="' + i + '" data-k="venta"></label>' : '') + '</div>' +
+      (u.estado === 'vendido' && u.venta && !u.ingreso ? '<button class="btn sm ghost" data-a="venta-ingreso" data-i="' + i + '">Apuntar la venta como ingreso</button>' : '') + '</div>').join('') + '</div>' +
+    '<div class="card"><b>Historial</b>' + (hist.length ? '<div class="list">' + hist.map((f) => { const e = (f.equipo || []).find((x) => x.tipo === 'art' && x.id === a.id); return '<button class="item" data-a="ver-factura" data-id="' + f.id + '"><span class="f1">' + esc(f.num) + ' · ' + esc(nombreCli(f.cliente)) + '<div class="sub" style="font-size:12px">' + fechaES(f.fecha) + (e ? ' · ' + e.dias + ' días' + (e.propio ? ' · uso propio' : '') : ' · en pack') + '</div></span>' + (e && !e.propio ? '<span class="num">' + eur(+e.precio || 0) + '</span>' : '') + '</button>'; }).join('') + '</div>' : '<span class="sub">Aún no se ha usado en ninguna factura.</span>') + '</div></div>';
+}
+function vPack(id) {
+  const p = packDe(id); if (!p) return '<p class="sub">No encontrado.</p>';
+  const suma = (p.items || []).reduce((s, it) => s + ((artDe(it.art) || {}).precioDia || 0) * (it.qty || 1), 0);
+  return '<div class="top"><div class="row"><a href="#equipo" class="btn icon" aria-label="Volver a equipo">' + ico('left') + '</a><h1 style="font-size:22px">' + esc(p.nombre || 'Pack nuevo') + '</h1></div></div>' +
+    '<div class="grid home-grid"><div class="card"><label class="f">Nombre del pack<input class="in" value="' + esc(p.nombre) + '" data-px="nombre"></label><label class="f">Precio del pack €/día<input class="in" inputmode="decimal" value="' + (p.precioDia ? String(p.precioDia).replace('.', ',') : '') + '" data-px="precioDia"></label>' +
+    '<span class="sub" style="font-size:12px">Por separado saldría a ' + eur(suma) + '/día. Lo que ganes con el pack se reparte entre sus piezas según su precio.</span><div class="row"><button class="btn danger sm" data-a="borrar-pack" data-id="' + p.id + '">Borrar</button><a href="#equipo" class="btn pri f1">Guardar</a></div></div>' +
+    '<div class="card"><div class="between"><b>Contenido</b><button class="btn sm ghost" data-a="pack-add">' + ico('plus', 14) + 'Añadir</button></div>' +
+    ((p.items || []).length ? (p.items || []).map((it, i) => '<div class="row"><span class="f1" style="font-size:14px">' + esc((artDe(it.art) || {}).nombre || 'Borrado') + '</span><input class="in" style="width:64px;min-height:38px" inputmode="numeric" value="' + (it.qty || 1) + '" data-pq="' + i + '" aria-label="Cantidad"><button class="btn icon sm" data-a="pack-quitar" data-i="' + i + '" aria-label="Quitar">' + ico('x', 14) + '</button></div>').join('') : '<span class="sub">Vacío. Añade las piezas que van en el pack.</span>') + '</div></div>';
+}
+/* Selector de equipo (factura o pack) */
+function abrirSelector(destino, soloLista) {
+  UI.selDest = destino; UI.selQ = UI.selQ || '';
+  const q = UI.selQ.toLowerCase();
+  const arts = S.equipo.filter((a) => unidadesActivas(a).length && (!q || coincide(a.nombre + ' ' + a.cat, q))).sort((a, b) => CATS_EQ.indexOf(a.cat) - CATS_EQ.indexOf(b.cat) || a.nombre.localeCompare(b.nombre));
+  const packs = destino === 'factura' ? S.packs.filter((p) => !q || coincide(p.nombre, q)) : [];
+  let html = '', last = '';
+  packs.forEach((p) => { html += '<button class="item" data-a="sel" data-t="pack" data-id="' + p.id + '"><span class="f1">' + esc(p.nombre) + '<div class="sub" style="font-size:12px">Pack · ' + (p.items || []).length + ' piezas</div></span><span class="sub">' + eur(p.precioDia || 0) + '</span>' + ico('plus', 18) + '</button>'; });
+  arts.forEach((a) => { if (a.cat !== last) { html += '<div class="sub" style="padding:10px 4px 2px;font-weight:600">' + esc(a.cat) + '</div>'; last = a.cat; } html += '<button class="item" data-a="sel" data-t="art" data-id="' + a.id + '"><span class="f1">' + esc(a.nombre) + '<div class="sub" style="font-size:12px">' + unidadesActivas(a).length + ' disponibles</div></span><span class="sub">' + (a.precioDia ? eur(a.precioDia) : '—') + '</span>' + ico('plus', 18) + '</button>'; });
+  if (soloLista && $('#sel-list')) { $('#sel-list').innerHTML = html || '<span class="sub">Nada con esa búsqueda.</span>'; return; }
+  hoja('<div class="between"><h2 style="font-size:20px">Añadir equipo</h2><button class="btn icon" data-a="cerrar" aria-label="Cerrar">' + ico('x') + '</button></div><input class="in" placeholder="Buscar" value="' + esc(UI.selQ) + '" data-in="selQ" id="sel-q" aria-label="Buscar equipo"><div class="list" id="sel-list">' + (html || '<span class="sub">No hay equipo. Añádelo en la sección Equipo.</span>') + '</div>');
+}
+function tarjetaEquipoFactura(f) {
+  const eq = f.equipo || [];
+  const enviada = f.estado !== 'borrador';
+  return '<div class="card"><div class="between"><b>Equipo</b><div class="row"><button class="btn sm ghost" data-a="carga">Lista de carga</button><button class="btn sm" data-a="add-equipo">' + ico('plus', 14) + 'Añadir</button></div></div>' +
+    (eq.length ? '' : '<span class="sub" style="font-size:13px">Añade el equipo que llevas: se calcula el precio con tus descuentos por días y sale en la factura como «Alquiler de equipo».</span>') +
+    eq.map((e, i) => '<div style="background:var(--s1);border-radius:14px;padding:10px;display:flex;flex-direction:column;gap:8px"><div class="between"><b style="font-size:14px">' + esc(nombreEq(e)) + (e.tipo === 'pack' ? ' <span class="pill">pack</span>' : '') + '</b><button class="btn icon sm" data-a="quitar-eq" data-i="' + i + '" aria-label="Quitar">' + ico('x', 14) + '</button></div>' +
+      '<div class="row wrap"><label class="f" style="flex:1 1 60px">Cantidad<input class="in" inputmode="numeric" value="' + e.qty + '" data-eq="' + i + '" data-k="qty"></label><label class="f" style="flex:1 1 60px">Días<input class="in" inputmode="numeric" value="' + e.dias + '" data-eq="' + i + '" data-k="dias"></label><label class="f" style="flex:1 1 90px">Precio €<input class="in" inputmode="decimal" value="' + (e.propio ? '' : String(e.precio || 0).replace('.', ',')) + '" ' + (e.propio ? 'disabled placeholder="—"' : '') + ' data-eq="' + i + '" data-k="precio" id="eqp-' + i + '"></label></div>' +
+      '<div class="row wrap" style="gap:14px;font-size:13px"><label class="row" style="gap:6px"><input type="checkbox"' + (e.propio ? ' checked' : '') + ' data-eqc="' + i + '" data-k="propio">Uso propio (sin cobrar)</label>' + (enviada || e.incluido ? '<label class="row" style="gap:6px"><input type="checkbox"' + (e.incluido ? ' checked' : '') + ' data-eqc="' + i + '" data-k="incluido">Ya incluido en el importe</label>' : '') + (e.manual ? '<button class="btn sm ghost" data-a="eq-recalc" data-i="' + i + '">Precio de tarifa</button>' : '') + '</div></div>').join('') +
+    (eq.length ? '<div class="between" style="font-size:14px"><span class="sub">Alquiler de equipo en la factura</span><b class="num" id="eq-total">' + eur(equipoCobrado(f)) + '</b></div>' : '') +
+    (enviada ? '<span class="sub" style="font-size:12px">Factura ya enviada: lo que añadas se marca como «ya incluido» para no cambiar su importe, y solo cuenta para la rentabilidad.</span>' : '') + '</div>';
+}
+function precioTarifa(e) { if (e.propio) return 0; const x = e.tipo === 'pack' ? packDe(e.id) : artDe(e.id); return x ? precioAlquiler(x.precioDia || 0, e.dias, e.qty) : 0; }
+function abrirCarga(f) {
+  const items = [];
+  (f.equipo || []).forEach((e) => {
+    if (e.tipo === 'pack') { const p = packDe(e.id); (p ? p.items : []).forEach((it) => items.push({ k: e.id + ':' + it.art, n: ((artDe(it.art) || {}).nombre || '?'), q: (it.qty || 1) * (e.qty || 1), de: p.nombre })); }
+    else items.push({ k: e.id, n: nombreEq(e), q: e.qty || 1 });
+  });
+  f.carga = f.carga || {};
+  const ida = items.filter((i) => (f.carga[i.k] || {}).ida).length, vuelta = items.filter((i) => (f.carga[i.k] || {}).vuelta).length;
+  hoja('<div class="between"><h2 style="font-size:20px">Lista de carga · ' + esc(f.num) + '</h2><button class="btn icon" data-a="cerrar" aria-label="Cerrar">' + ico('x') + '</button></div>' +
+    (items.length ? '<div class="between sub"><span>Cargado ' + ida + '/' + items.length + '</span><span>Devuelto ' + vuelta + '/' + items.length + '</span></div>' +
+      '<table class="t"><thead><tr><th>Equipo</th><th class="r">Ida</th><th class="r">Vuelta</th></tr></thead><tbody>' + items.map((i) => '<tr><td>' + (i.q > 1 ? i.q + '× ' : '') + esc(i.n) + (i.de ? '<div class="sub" style="font-size:11px">' + esc(i.de) + '</div>' : '') + '</td><td class="r"><input type="checkbox" style="width:22px;height:22px"' + ((f.carga[i.k] || {}).ida ? ' checked' : '') + ' data-carga="' + esc(i.k) + '" data-k="ida" aria-label="Cargado ' + esc(i.n) + '"></td><td class="r"><input type="checkbox" style="width:22px;height:22px"' + ((f.carga[i.k] || {}).vuelta ? ' checked' : '') + ' data-carga="' + esc(i.k) + '" data-k="vuelta" aria-label="Devuelto ' + esc(i.n) + '"></td></tr>').join('') + '</tbody></table>' +
+      (vuelta === items.length ? '<div class="infobox" style="border-color:#1F5C3E;color:var(--ok)">Todo de vuelta en casa.</div>' : '') + '<button class="btn ghost sm" data-a="carga-reset">Desmarcar todo</button>'
+      : '<span class="sub">Esta factura no tiene equipo. Añádelo primero.</span>'));
+}
+function preguntarInventario(m) {
+  const base = r2(movCalc(m).base);
+  UI.invMov = m.id;
+  hoja('<div class="between"><h2 style="font-size:20px">¿Añadir al inventario?</h2><button class="btn icon" data-a="cerrar" aria-label="No, cerrar">' + ico('x') + '</button></div><p class="sub" style="margin:0">Has apuntado «' + esc(m.concepto) + '». Si es equipo, añádelo para seguir su rentabilidad. Se guarda con precio de compra ' + eur(base) + ' (sin IVA) y fecha ' + fechaES(m.fecha) + '.</p>' +
+    '<button class="btn pri" data-a="inv-nuevo">Como equipo nuevo</button>' +
+    (S.equipo.length ? '<label class="f">O como otra unidad de…<select class="in" id="inv-art"><option value="">Elige equipo</option>' + S.equipo.slice().sort((a, b) => a.nombre.localeCompare(b.nombre)).map((a) => '<option value="' + a.id + '">' + esc(a.nombre) + '</option>').join('') + '</select></label><button class="btn" data-a="inv-unidad">Añadir unidad</button>' : '') +
+    '<button class="btn ghost" data-a="cerrar">No es equipo</button>');
+}
+
 /* ---------- Ajustes ---------- */
 function vAjustes() {
   const a = S.ajustes;
   const inp = (k, l, ph) => '<label class="f">' + l + '<input class="in" value="' + esc(a[k]) + '" data-ax="' + k + '" placeholder="' + esc(ph || '') + '"></label>';
   return '<div class="top"><h1>Ajustes</h1></div><div class="grid home-grid">' +
-    '<div class="card"><b>Tus datos fiscales</b>' + inp('nombre', 'Nombre completo') + inp('nif', 'NIF') + inp('direccion1', 'Dirección', 'Calle, número') + inp('direccion2', 'CP, ciudad, provincia') + inp('telefono', 'Teléfono') + inp('iban', 'IBAN') + inp('pieActividad', 'Actividad en el pie', 'PRODUCCIONES') + '</div>' +
+    '<div class="card"><b>Tus datos fiscales</b>' + inp('nombre', 'Nombre completo') + inp('nif', 'NIF') + inp('direccion1', 'Dirección', 'Calle, número') + inp('direccion2', 'CP, ciudad, provincia') + inp('telefono', 'Teléfono') + inp('iban', 'IBAN') + inp('pieActividad', 'Actividad en el pie', 'PRODUCCIONES') + inp('origen', 'Salida habitual (kilometraje)', 'EL MOLAR') + '</div>' +
     '<div class="card"><b>Facturas</b><div class="row"><label class="f f1">Serie<input class="in" value="' + esc(a.serie) + '" data-ax="serie"></label><label class="f f1">Empezar en (solo sin facturas)<input class="in" inputmode="numeric" value="' + a.siguiente + '" data-ax="siguiente"></label></div><span class="sub" style="font-size:12px">Próxima factura: <b>' + esc(siguienteNum()) + '</b></span>' +
     '<div class="row"><label class="f f1">IVA %<input class="in" inputmode="numeric" value="' + a.ivaPct + '" data-ax="ivaPct"></label><label class="f f1">IRPF %<input class="in" inputmode="numeric" value="' + a.irpfPct + '" data-ax="irpfPct"></label><label class="f f1">Vence (meses)<input class="in" inputmode="numeric" value="' + a.venceMeses + '" data-ax="venceMeses"></label></div>' +
     '<div class="row"><label class="f f1">Difícil justificación %<input class="in" inputmode="decimal" value="' + a.gdjPct + '" data-ax="gdjPct"></label><label class="f f1">Máximo anual €<input class="in" inputmode="numeric" value="' + a.gdjMax + '" data-ax="gdjMax"></label></div>' +
@@ -709,7 +910,7 @@ function vAjustes() {
     [['envio', 'Envío de factura'], ['venc', 'Día del vencimiento'], ['rec', 'Recordatorio cada 15 días']].map(([k, l]) => '<label class="f">' + l + ' · asunto<input class="in" value="' + esc(a.correo[k + 'Asunto']) + '" data-co="' + k + 'Asunto"></label><textarea class="in" rows="5" data-co="' + k + '" aria-label="' + l + ' · mensaje">' + esc(a.correo[k]) + '</textarea>').join('') + '</div>' +
     '<div class="card"><b>Categorías</b><span class="sub" style="font-size:12px">% de IVA y de gasto que se deduce, y límite mensual opcional (aviso al 85 %).</span><div class="scroll-x"><table class="t"><thead><tr><th>Categoría</th><th class="r">IVA %</th><th class="r">IRPF %</th><th class="r">Límite €/mes</th></tr></thead><tbody>' +
     CATS.filter((c) => !c.veh).map((c0) => { const c = cat(c0.id); return '<tr><td>' + esc(c.n) + '</td><td class="r"><input class="in" style="width:64px;min-height:36px" value="' + (c.sinIva ? '—' : c.iva || 0) + '" ' + (c.sinIva ? 'disabled' : '') + ' data-cat="' + c.id + '" data-k="iva" aria-label="IVA ' + esc(c.n) + '"></td><td class="r"><input class="in" style="width:64px;min-height:36px" value="' + (c.irpf || 0) + '" data-cat="' + c.id + '" data-k="irpf" aria-label="IRPF ' + esc(c.n) + '"></td><td class="r"><input class="in" style="width:80px;min-height:36px" value="' + (a.limites[c.id] || '') + '" data-lim="' + c.id + '" aria-label="Límite ' + esc(c.n) + '"></td></tr>'; }).join('') + '</tbody></table></div></div>' +
-    '<div class="card"><b>Vehículos</b><div class="veh">' + S.vehiculos.map((v) => '<div class="vehcard"><div class="vehimg" data-foto="' + (v.foto || '') + '">' + (v.foto ? '' : VEH_SVG[v.tipo]) + '</div><div style="padding:10px;display:flex;flex-direction:column;gap:6px"><input class="in" value="' + esc(v.nombre) + '" data-vx="' + v.id + '" data-k="nombre" aria-label="Nombre"><input class="in" value="' + esc(v.modelo) + '" data-vx="' + v.id + '" data-k="modelo" aria-label="Modelo"><label class="row" style="font-size:13px;gap:6px"><input type="checkbox" ' + (v.propio ? 'checked' : '') + ' data-vprop="' + v.id + '">Es mío (deducible)</label><label class="btn ghost sm" style="cursor:pointer">' + ico('cam', 14) + 'Foto<input type="file" accept="image/*" hidden data-file="veh" data-id="' + v.id + '"></label></div></div>').join('') + '</div></div>' +
+    '<div class="card"><b>Vehículos</b><div class="veh">' + S.vehiculos.map((v) => '<div class="vehcard"><div class="vehimg" data-foto="' + (v.foto || '') + '">' + (v.foto ? '' : VEH_SVG[v.tipo]) + '</div><div style="padding:10px;display:flex;flex-direction:column;gap:6px"><input class="in" value="' + esc(v.nombre) + '" data-vx="' + v.id + '" data-k="nombre" aria-label="Nombre"><input class="in" value="' + esc(v.modelo) + '" data-vx="' + v.id + '" data-k="modelo" aria-label="Modelo"><label class="f" style="font-size:12px">Consumo (L/100 km)<input class="in" inputmode="decimal" value="' + String(consumoDe(v)).replace('.', ',') + '" data-vx="' + v.id + '" data-k="consumo"></label><label class="row" style="font-size:13px;gap:6px"><input type="checkbox" ' + (v.propio ? 'checked' : '') + ' data-vprop="' + v.id + '">Es mío (deducible)</label><label class="btn ghost sm" style="cursor:pointer">' + ico('cam', 14) + 'Foto<input type="file" accept="image/*" hidden data-file="veh" data-id="' + v.id + '"></label></div></div>').join('') + '</div></div>' +
     '<div class="card"><b>Gastos recurrentes</b><span class="sub" style="font-size:12px">Se apuntan solos cada mes el día indicado.</span>' +
     S.recurrentes.map((r, i) => '<div style="background:var(--s1);border-radius:14px;padding:10px;display:flex;flex-direction:column;gap:8px"><div class="row"><label class="f f1">Nombre<input class="in" value="' + esc(r.concepto) + '" data-rx="' + i + '" data-k="concepto" placeholder="Netflix, alquiler, gimnasio…"></label><button class="btn icon sm" style="align-self:flex-end" data-a="quitar-rec" data-i="' + i + '" aria-label="Quitar ' + esc(r.concepto) + '">' + ico('x', 14) + '</button></div><div class="row wrap"><label class="f" style="flex:1 1 90px">Importe €<input class="in" inputmode="decimal" value="' + String(r.importe).replace('.', ',') + '" data-rx="' + i + '" data-k="importe"></label><label class="f" style="flex:0 1 70px">Día<input class="in" inputmode="numeric" value="' + (r.dia || 1) + '" data-rx="' + i + '" data-k="dia"></label><label class="f" style="flex:2 1 180px">Categoría<select class="in" data-rx="' + i + '" data-k="cat">' + CATS.map((c) => '<option value="' + c.id + '"' + (r.cat === c.id ? ' selected' : '') + '>' + esc(cat(c.id).n) + '</option>').join('') + '</select></label></div></div>').join('') +
     '<button class="btn dash sm" data-a="add-rec">+ Recurrente</button></div>' +
@@ -747,6 +948,32 @@ async function importar(obj) {
     guardar(); toast('Importado: ' + obj.movimientos.length + ' movimientos y ' + obj.facturas.length + ' facturas'); render();
     return;
   }
+  if (obj.tipo === 'mc-equipo') {
+    if (S.equipo.length && !confirm('Ya tienes equipo en la app. ¿Añadir también el del archivo? (no se borra nada)')) return;
+    const nom = new Set(S.equipo.map((a) => a.nombre.toLowerCase()));
+    let n = 0;
+    obj.articulos.forEach((a) => { if (nom.has(a.nombre.toLowerCase())) return; S.equipo.push(touch({ id: uid(), nombre: a.nombre, cat: a.cat, precioDia: a.precioDia || 0, nota: a.nota || '', unidades: Array.from({ length: a.unidades || 1 }, () => ({ id: uid(), fecha: '', coste: 0, estado: 'activo' })) })); n++; });
+    (obj.packs || []).forEach((p) => { if (!S.packs.some((x) => x.nombre === p.nombre)) S.packs.push(touch({ id: uid(), nombre: p.nombre, precioDia: p.precio || 0, items: [] })); });
+    guardar(); render(); toast('Equipo importado: ' + n + ' artículos'); return;
+  }
+  if (obj.tipo === 'mc-viajes') {
+    let nc = 0, nv = 0, na = 0;
+    const idDe = {};
+    obj.clientes.forEach((c) => {
+      let ex = S.clientes.find((x) => (c.nif && x.nif && x.nif.toUpperCase() === c.nif.toUpperCase()) || x.nombre.toLowerCase() === c.nombre.toLowerCase());
+      if (!ex) { ex = touch({ id: uid(), nombre: c.nombre, nif: c.nif, dir1: c.dir1, dir2: c.dir2, correos: [] }); S.clientes.push(ex); nc++; }
+      idDe[c.key] = ex.id;
+    });
+    const tocadas = new Set();
+    obj.viajes.forEach((v) => {
+      const f = S.facturas.find((x) => x.num === v.num); if (!f) return;
+      if (!tocadas.has(f.id)) { f.viajes = viajesDe(f).filter((x) => !x.importado); tocadas.add(f.id); }
+      f.viajes.push({ id: uid(), fecha: v.fecha, destino: v.destino, km: v.km, iv: v.iv, veh: v.veh || '', importado: true }); nv++;
+      if (!f.cliente && idDe[v.cliente]) { f.cliente = idDe[v.cliente]; na++; }
+      touch(f);
+    });
+    guardar(); render(); toast('Kilometraje importado: ' + nv + ' días, ' + nc + ' clientes nuevos, ' + na + ' facturas con cliente asignado'); return;
+  }
   if (obj.v && obj.ajustes && obj.movimientos) {
     if (!confirm('Esto reemplaza todos los datos de este dispositivo por la copia. ¿Seguir?')) return;
     S = { ...estadoInicial(), ...obj }; guardar(); toast('Copia restaurada'); render(); return;
@@ -756,7 +983,7 @@ async function importar(obj) {
 function fusionar(remoto) {
   const bor = { ...remoto.borrados, ...S.borrados };
   Object.keys(remoto.borrados || {}).forEach((k) => { bor[k] = Math.max(remoto.borrados[k] || 0, S.borrados[k] || 0); });
-  const cols = ['movimientos', 'facturas', 'presupuestos', 'clientes', 'recurrentes', 'vehiculos'];
+  const cols = ['movimientos', 'facturas', 'presupuestos', 'clientes', 'recurrentes', 'vehiculos', 'equipo', 'packs'];
   const out = { ...S, borrados: bor };
   cols.forEach((col) => {
     const map = new Map();
@@ -859,16 +1086,17 @@ document.addEventListener('click', async (e) => {
     case 'vista': { const o = ['lista', 'circulo', 'meses']; S.ajustes.vista = o[(o.indexOf(S.ajustes.vista || 'lista') + 1) % 3]; guardar(); render(); break; }
     case 'filtrar-cat': UI.filtro = 'cat:' + el.dataset.c; location.hash = 'movimientos'; break;
     case 'filtro': UI.filtro = el.dataset.f; render(); break;
-    case 'g-tipo': G_EDIT.cat = el.dataset.t === 'ahorro' ? 'ahorro' : 'gasolina'; if (G_EDIT.cat === 'ahorro') G_EDIT.cuenta = G_EDIT.cuenta || 'BBVA'; else G_EDIT.veh = G_EDIT.veh || ultimoVeh(); pintarGasto(); break;
+    case 'g-tipo': G_EDIT.cat = el.dataset.t === 'ahorro' ? 'ahorro' : el.dataset.t === 'ingreso' ? 'ingreso' : 'gasolina'; if (G_EDIT.cat === 'ahorro') G_EDIT.cuenta = G_EDIT.cuenta || 'BBVA'; else if (G_EDIT.cat === 'ingreso') G_EDIT.tipoIng = G_EDIT.tipoIng || 'Regalo'; else G_EDIT.veh = G_EDIT.veh || ultimoVeh(); pintarGasto(); break;
     case 'g-cat': G_EDIT.cat = el.dataset.c; if (cat(G_EDIT.cat).veh && !G_EDIT.veh) G_EDIT.veh = ultimoVeh(); pintarGasto(); break;
     case 'g-veh': G_EDIT.veh = el.dataset.v; pintarGasto(); break;
     case 'g-guardar': {
       const g = G_EDIT; if (!(g.importe > 0)) return toast('Pon un importe');
-      if (!g.concepto) g.concepto = g.cat === 'ahorro' ? 'Ahorro ' + (g.cuenta || '') : cat(g.cat).n;
+      if (!g.concepto) g.concepto = g.cat === 'ahorro' ? 'Ahorro ' + (g.cuenta || '') : g.cat === 'ingreso' ? (g.tipoIng || 'Ingreso') : cat(g.cat).n;
       if (!cat(g.cat).veh) delete g.veh;
       if (g.fotoNueva) { const fid = 'tk-' + uid(); await DB.put('fotos', fid, g.fotoNueva); g.foto = fid; delete g.fotoNueva; }
-      if (g.id) { const i = S.movimientos.findIndex((x) => x.id === g.id); S.movimientos[i] = touch(g); } else { g.id = uid(); S.movimientos.push(touch(g)); }
-      guardar(); cerrarHoja(); toast('Guardado'); render(); break;
+      const yaTenia = !!g.yaTenia; delete g.yaTenia; if (g.id) { const i = S.movimientos.findIndex((x) => x.id === g.id); S.movimientos[i] = touch(g); } else { g.id = uid(); S.movimientos.push(touch(g)); }
+      const nuevoEq = !yaTenia && (g.cat === 'material' || g.cat === 'equipo');
+      guardar(); cerrarHoja(); toast('Guardado'); render(); if (nuevoEq) preguntarInventario(g); break;
     }
     case 'g-borrar': if (confirm('¿Borrar este movimiento?')) { borrar('movimientos', G_EDIT.id); guardar(); cerrarHoja(); render(); } break;
     case 'ver-foto': { const src = await fotoSrc(id); if (src) window.open(src, '_blank'); break; }
@@ -876,6 +1104,14 @@ document.addEventListener('click', async (e) => {
     case 'ftab-cli': UI.ftab = 'clientes'; break;
     case 'nueva-factura': { const nf = nuevaFactura(); location.hash = 'factura/' + nf.id; break; }
     case 'ver-factura': location.hash = 'factura/' + id; break;
+    case 'add-viaje': {
+      const f = F_EDIT; f.viajes = viajesDe(f).slice(); const last = f.viajes[f.viajes.length - 1];
+      let base = last ? { ...last, id: uid(), fecha: addDays(last.fecha, 1) } : null;
+      if (!base) { const prev = S.facturas.filter((x) => x.id !== f.id && x.cliente && x.cliente === f.cliente).sort((a, b) => b.fecha.localeCompare(a.fecha)).flatMap((x) => viajesDe(x))[0]; const vl = S.facturas.flatMap((x) => viajesDe(x)).filter((x) => x.veh).sort((a, b) => b.fecha.localeCompare(a.fecha))[0]; base = { id: uid(), fecha: f.fecha, destino: prev ? prev.destino : '', km: prev ? prev.km : 0, iv: true, veh: prev && prev.veh ? prev.veh : vl ? vl.veh : '' }; }
+      f.viajes.push(base); delete f.km; delete f.veh; touch(f); guardar(); render(); break;
+    }
+    case 'quitar-viaje': F_EDIT.viajes = viajesDe(F_EDIT).filter((x, i) => i !== +el.dataset.i); delete F_EDIT.km; touch(F_EDIT); guardar(); render(); break;
+    case 'kms': kilometrajeXlsx(UI.anioH, +el.dataset.q).then((b) => download('Kilometraje ' + el.dataset.q + 'T ' + UI.anioH + '.xlsx', b, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')); break;
     case 'add-linea': F_EDIT.lineas.push({ c: '', imp: 0, det: '' }); touch(F_EDIT); guardar(); render(); break;
     case 'add-det': { const l = F_EDIT.lineas[F_EDIT.lineas.length - 1]; if (l) { l.showDet = true; render(); } break; }
     case 'quitar-linea': if (F_EDIT.lineas.length > 1) { versionar(F_EDIT); F_EDIT.lineas.splice(+el.dataset.i, 1); touch(F_EDIT); guardar(); render(); } break;
@@ -896,6 +1132,32 @@ document.addEventListener('click', async (e) => {
     case 'borrar-factura': if (confirm(F_EDIT.estado === 'borrador' ? '¿Borrar este borrador?' : 'Esta factura ya está ' + F_EDIT.estado + '. Bórrala solo si es una prueba o un error. ¿Borrar?')) { borrar('facturas', F_EDIT.id); guardar(); location.hash = 'facturas'; } break;
     case 'rectificar': { const r = { id: uid(), num: siguienteRect(), fecha: hoy(), cliente: F_EDIT.cliente, lineas: JSON.parse(JSON.stringify(F_EDIT.lineas)), estado: 'borrador', rectificaDe: F_EDIT.id, versiones: [] }; S.facturas.push(touch(r)); guardar(); location.hash = 'factura/' + r.id; toast('Rectificativa ' + r.num + ' creada'); break; }
     case 'nuevo-cliente': { const c = touch({ id: uid(), nombre: '', nif: '', dir1: '', dir2: '', correos: [] }); S.clientes.push(c); const desde = el.dataset.desde; UI.volver = desde ? 'factura/' + desde : null; if (desde) { const ff = S.facturas.find((x) => x.id === desde); if (ff) { ff.cliente = c.id; touch(ff); } } guardar(); location.hash = 'cliente/' + c.id; break; }
+    case 'ver-art': location.hash = 'art/' + id; break;
+    case 'ver-pack': location.hash = 'pack/' + id; break;
+    case 'eqcat': UI.eqCat = el.dataset.c; render(); break;
+    case 'nuevo-art': { const a = touch({ id: uid(), nombre: '', cat: UI.eqCat && UI.eqCat !== 'todos' ? UI.eqCat : 'Cámaras', precioDia: 0, nota: '', unidades: [{ id: uid(), fecha: '', coste: 0, estado: 'activo' }] }); S.equipo.push(a); guardar(); location.hash = 'art/' + a.id; break; }
+    case 'nuevo-pack': { const pk = touch({ id: uid(), nombre: '', precioDia: 0, items: [] }); S.packs.push(pk); guardar(); location.hash = 'pack/' + pk.id; break; }
+    case 'borrar-art': if (confirm('¿Borrar este equipo y su historial de rentabilidad? Las facturas no cambian.')) { borrar('equipo', id); guardar(); location.hash = 'equipo'; } break;
+    case 'borrar-pack': if (confirm('¿Borrar este pack?')) { borrar('packs', id); guardar(); location.hash = 'equipo'; } break;
+    case 'add-unidad': { const a = artDe(ruta().id); a.unidades = a.unidades || []; a.unidades.push({ id: uid(), fecha: '', coste: 0, estado: 'activo' }); touch(a); guardar(); render(); break; }
+    case 'quitar-unidad': { const a = artDe(ruta().id); if (confirm('¿Quitar esta unidad? Si la has vendido o se ha roto, mejor cambia su estado para conservar el historial.')) { a.unidades.splice(+el.dataset.i, 1); touch(a); guardar(); render(); } break; }
+    case 'venta-ingreso': { const a = artDe(ruta().id); const u = a.unidades[+el.dataset.i]; const m = touch({ id: uid(), fecha: hoy(), concepto: 'Venta de ' + a.nombre, importe: +u.venta, cat: 'ingreso', tipoIng: 'Venta de algo' }); S.movimientos.push(m); u.ingreso = m.id; touch(a); guardar(); toast('Venta apuntada como ingreso'); render(); break; }
+    case 'pack-add': abrirSelector('pack'); break;
+    case 'pack-quitar': { const pk = packDe(ruta().id); pk.items.splice(+el.dataset.i, 1); touch(pk); guardar(); render(); break; }
+    case 'add-equipo': UI.selQ = ''; abrirSelector('factura'); break;
+    case 'sel': {
+      if (UI.selDest === 'pack') { const pk = packDe(ruta().id); const ex = pk.items.find((it) => it.art === id); if (ex) ex.qty = (ex.qty || 1) + 1; else pk.items.push({ art: id, qty: 1 }); touch(pk); guardar(); cerrarHoja(); render(); toast('Añadido al pack'); break; }
+      const f = F_EDIT; f.equipo = f.equipo || [];
+      const dias = Math.max(1, viajesDe(f).length || 1);
+      const e = { tipo: el.dataset.t, id, qty: 1, dias, precio: 0, incluido: f.estado !== 'borrador' };
+      e.precio = precioTarifa(e); f.equipo.push(e); versionar(f); touch(f); guardar(); cerrarHoja(); render(); toast('Añadido: ' + nombreEq(e)); break;
+    }
+    case 'quitar-eq': F_EDIT.equipo.splice(+el.dataset.i, 1); touch(F_EDIT); guardar(); render(); break;
+    case 'eq-recalc': { const e = F_EDIT.equipo[+el.dataset.i]; e.manual = false; e.precio = precioTarifa(e); touch(F_EDIT); guardar(); render(); break; }
+    case 'carga': abrirCarga(F_EDIT); break;
+    case 'carga-reset': F_EDIT.carga = {}; touch(F_EDIT); guardar(); abrirCarga(F_EDIT); break;
+    case 'inv-nuevo': { const m = S.movimientos.find((x) => x.id === UI.invMov); const a = touch({ id: uid(), nombre: m.concepto, cat: 'Otros', precioDia: 0, nota: '', unidades: [{ id: uid(), fecha: m.fecha, coste: r2(movCalc(m).base), estado: 'activo', mov: m.id }] }); S.equipo.push(a); guardar(); cerrarHoja(); location.hash = 'art/' + a.id; toast('Añadido al inventario: ponle categoría y precio de alquiler'); break; }
+    case 'inv-unidad': { const sel = $('#inv-art'); if (!sel || !sel.value) return toast('Elige el equipo'); const m = S.movimientos.find((x) => x.id === UI.invMov); const a = artDe(sel.value); a.unidades.push({ id: uid(), fecha: m.fecha, coste: r2(movCalc(m).base), estado: 'activo', mov: m.id }); touch(a); guardar(); cerrarHoja(); toast('Unidad añadida a ' + a.nombre); break; }
     case 'ver-cliente': UI.volver = null; location.hash = 'cliente/' + id; break;
     case 'editar-cliente': UI.volver = 'factura/' + el.dataset.desde; location.hash = 'cliente/' + id; break;
     case 'guardar-cliente': { const c = S.clientes.find((x) => x.id === id); if (c && !c.nombre.trim()) return toast('Pon al menos el nombre del cliente'); guardar(); toast('Cliente guardado'); const v = UI.volver; UI.volver = null; if (v) location.hash = v; else { UI.ftab = 'clientes'; location.hash = 'facturas'; } break; }
@@ -944,24 +1206,43 @@ document.addEventListener('click', async (e) => {
 });
 document.addEventListener('input', (e) => {
   const el = e.target; const d = el.dataset;
-  if (d.g !== undefined && G_EDIT) { G_EDIT[d.g] = d.g === 'importe' ? parseEur(el.value) : el.value; if (d.g === 'importe' || d.g === 'concepto') refrescarGasto(); return; }
+  if (d.g !== undefined && G_EDIT) { G_EDIT[d.g] = d.g === 'importe' || d.g === 'litros' ? parseEur(el.value) : el.value; if (d.g === 'importe' || d.g === 'concepto') refrescarGasto(); return; }
+  if (d.in === 'eqQ') { UI.eqQ = el.value; clearTimeout(render.t); render.t = setTimeout(() => { const tmp = document.createElement('div'); tmp.innerHTML = vEquipo(); const n = tmp.querySelector('#eq-res'), o = $('#eq-res'); if (n && o) o.replaceWith(n); }, 250); return; }
+  if (d.in === 'selQ') { UI.selQ = el.value; clearTimeout(render.t); render.t = setTimeout(() => abrirSelector(UI.selDest, true), 200); return; }
+  if (d.eq !== undefined && F_EDIT) {
+    const e = F_EDIT.equipo[+d.eq]; if (!e) return;
+    if (d.k === 'precio') { e.precio = parseEur(el.value); e.manual = true; }
+    else { e[d.k] = Math.max(1, parseInt(el.value, 10) || 1); if (!e.manual) { e.precio = precioTarifa(e); const pi = $('#eqp-' + d.eq); if (pi) pi.value = String(e.precio).replace('.', ','); } }
+    touch(F_EDIT); guardar(); refrescarTotales(); return;
+  }
+  if (d.ex) { const a = artDe(ruta().id); if (a) { a[d.ex] = d.ex === 'precioDia' ? parseEur(el.value) : el.value; touch(a); guardar(); } return; }
+  if (d.ux !== undefined) { const a = artDe(ruta().id); const u = a && a.unidades[+d.ux]; if (u && d.k !== 'estado') { u[d.k] = d.k === 'coste' || d.k === 'venta' ? parseEur(el.value) : el.value; touch(a); guardar(); } return; }
+  if (d.px) { const pk = packDe(ruta().id); if (pk) { pk[d.px] = d.px === 'precioDia' ? parseEur(el.value) : el.value; touch(pk); guardar(); } return; }
+  if (d.pq !== undefined) { const pk = packDe(ruta().id); if (pk) { pk.items[+d.pq].qty = Math.max(1, parseInt(el.value, 10) || 1); touch(pk); guardar(); } return; }
   if (d.in === 'q') { UI.q = el.value; clearTimeout(render.t); render.t = setTimeout(() => { const tmp = document.createElement('div'); tmp.innerHTML = vMovimientos(); const n = tmp.querySelector('#mov-res'), o = $('#mov-res'); if (n && o) o.replaceWith(n); }, 250); return; }
   if (d.in) { UI[d.in] = el.value; clearTimeout(render.t); render.t = setTimeout(() => { const pos = el.selectionStart; render(); const n = document.querySelector('[data-in="' + d.in + '"]'); if (n && n.tagName === 'INPUT') { n.focus(); n.setSelectionRange(pos, pos); } }, 250); return; }
   if (d.ln !== undefined && F_EDIT) { versionar(F_EDIT); const l = F_EDIT.lineas[+d.ln]; l[d.k] = d.k === 'imp' ? parseEur(el.value) : el.value; touch(F_EDIT); guardar(); refrescarTotales(); return; }
+  if (d.vj !== undefined && F_EDIT) { F_EDIT.viajes = viajesDe(F_EDIT); delete F_EDIT.km; const v = F_EDIT.viajes[+d.vj]; v[d.k] = d.k === 'km' ? (parseInt(el.value, 10) || 0) : d.k === 'iv' ? el.checked : el.value; touch(F_EDIT); guardar(); return; }
   if (d.fx && F_EDIT) { if (d.fx !== 'km' && d.fx !== 'veh') versionar(F_EDIT); F_EDIT[d.fx] = d.fx === 'km' ? (parseInt(el.value, 10) || 0) : el.value; touch(F_EDIT); guardar(); refrescarTotales(); return; }
   if (d.cx) { const c = S.clientes.find((x) => x.id === ruta().id); if (c) { c[d.cx] = d.cx === 'correos' ? el.value.split(/[,;\s]+/).filter(Boolean) : el.value; touch(c); guardar(); } return; }
   if (d.ax) { const num = ['siguiente', 'ivaPct', 'irpfPct', 'venceMeses', 'gdjPct', 'gdjMax'].includes(d.ax); S.ajustes[d.ax] = num ? parseEur(el.value) : el.value; touch(S.ajustes); guardar(); return; }
   if (d.co) { S.ajustes.correo[d.co] = el.value; touch(S.ajustes); guardar(); return; }
   if (d.cat) { S.ajustes.cats[d.cat] = S.ajustes.cats[d.cat] || {}; S.ajustes.cats[d.cat][d.k] = parseEur(el.value); touch(S.ajustes); guardar(); return; }
   if (d.lim) { S.ajustes.limites[d.lim] = parseEur(el.value); touch(S.ajustes); guardar(); return; }
-  if (d.vx) { const v = veh(d.vx); v[d.k] = el.value; touch(v); guardar(); return; }
+  if (d.vx) { const v = veh(d.vx); v[d.k] = d.k === 'consumo' ? parseEur(el.value) : el.value; touch(v); guardar(); return; }
   if (d.vpct) { const v = veh(d.vpct); v.pct = Math.max(0, Math.min(100, parseEur(el.value))); touch(v); guardar(); return; }
   if (d.rx !== undefined) { const r = S.recurrentes[+d.rx]; r[d.k] = d.k === 'importe' ? parseEur(el.value) : d.k === 'dia' ? (parseInt(el.value, 10) || 1) : el.value; touch(r); guardar(); return; }
 });
 document.addEventListener('change', async (e) => {
   const el = e.target; const d = el.dataset;
+  if (d.eqc !== undefined && F_EDIT) { const e = F_EDIT.equipo[+d.eqc]; e[d.k] = el.checked; if (d.k === 'propio') e.precio = el.checked ? 0 : precioTarifa(e); touch(F_EDIT); guardar(); render(); return; }
+  if (d.ux !== undefined && d.k === 'estado') { const a = artDe(ruta().id); a.unidades[+d.ux].estado = el.value; if (el.value !== 'activo') a.unidades[+d.ux].fechaBaja = hoy(); touch(a); guardar(); render(); return; }
+  if (d.carga && F_EDIT) { F_EDIT.carga = F_EDIT.carga || {}; const o = F_EDIT.carga[d.carga] || (F_EDIT.carga[d.carga] = {}); o[d.k] = el.checked; touch(F_EDIT); guardar(); abrirCarga(F_EDIT); return; }
+  if (d.ex === 'cat') { render(); return; }
+  if (d.in === 'eqOrden') { UI.eqOrden = el.value; render(); return; }
   if (d.in === 'filtro' || d.in === 'mesFiltro' || d.in === 'anioCli') { UI[d.in] = el.value || (d.in === 'filtro' ? 'todos' : ''); render(); return; }
   if (d.fx === 'cliente' && F_EDIT) render();
+  if (d.vj !== undefined && F_EDIT && (d.k === 'iv' || d.k === 'veh' || d.k === 'fecha')) { const v = viajesDe(F_EDIT)[+d.vj]; if (v) { v[d.k] = d.k === 'iv' ? el.checked : el.value; F_EDIT.viajes = viajesDe(F_EDIT); touch(F_EDIT); guardar(); } return; }
   if (d.vprop) { const v = veh(d.vprop); v.propio = el.checked; touch(v); guardar(); return; }
   if (d.g === 'trabajo' || d.g === 'fecha' || d.g === 'cuenta') return;
   if (d.file) {
