@@ -291,7 +291,7 @@ function render() {
 function after(v, id) {
   if (v === 'inicio' || !v) { animarBalance(); cargarFotosVeh(); }
   if (v === 'factura') pintarPreview(id);
-  if (v === 'ajustes') cargarFotosVeh();
+  if (v === 'ajustes' || v === 'equipo' || v === 'art') cargarFotosVeh();
 }
 function haceCuanto(ts) { const m = Math.round((Date.now() - ts) / 60000); if (m < 60) return 'hace ' + m + ' min'; const h = Math.round(m / 60); if (h < 48) return 'hace ' + h + ' h'; return 'hace ' + Math.round(h / 24) + ' días'; }
 
@@ -789,6 +789,34 @@ function barraPct(pct) {
   const col = pct >= 100 ? 'var(--ok)' : pct >= 50 ? 'var(--warn)' : 'var(--ac)';
   return '<div class="row" style="gap:8px"><div class="bar f1"><div style="width:' + Math.min(100, Math.max(2, pct)) + '%;background:' + col + '"></div></div><span style="font-size:12px;color:' + col + ';min-width:44px;text-align:right">' + (PRIV ? '••' : Math.round(pct)) + ' %</span></div>';
 }
+
+const EQ_ICO = {
+  'Cámaras': '<path d="M3 8h4l2-3h6l2 3h4v11H3z"/><path d="M9 13h6v4H9z"/>',
+  'Lentes': '<path d="M6 4h12v16H6z"/><path d="M9 8h6v8H9z"/>',
+  'Accesorios cámaras': '<path d="M11 3h2v9h-2zM6 12h12v2H6zM6 14l-3 7M18 14l3 7M11 14h2v7h-2z"/>',
+  'Luces': '<path d="M8 3h8v9H8zM10 12h4v3h-4zM11 15h2v6h-2zM5 6H3M21 6h-2M5 10H3M21 10h-2"/>',
+  'Sonido': '<path d="M9 3h6v10H9zM6 10v3h12v-3M11 16h2v5h-2zM8 21h8"/>',
+  'Cables': '<path d="M3 6h5v4H3zM16 14h5v4h-5zM8 8h4v8h4"/>',
+  'Alimentación': '<path d="M9 3v5M15 3v5M6 8h12v5H6zM10 13h4v4h-4zM11 17h2v4h-2z"/>',
+  'Transporte': '<path d="M5 8h14v13H5zM9 8V4h6v4M5 13h14"/>',
+  'Otros': '<path d="M4 7l8-4 8 4v10l-8 4-8-4zM4 7l8 4 8-4M12 11v10"/>'
+};
+const eqIco = (c) => '<svg aria-hidden="true" width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" shape-rendering="crispEdges">' + (EQ_ICO[c] || EQ_ICO['Otros']) + '</svg>';
+function rareza(pct) { return pct == null ? 'gris' : pct >= 100 ? 'oro' : pct >= 50 ? 'naranja' : 'rosa'; }
+function inventarioRetro(arts, st) {
+  const lim = (window.innerWidth >= 900 ? 8 : 4) * 3;
+  const todo = UI.invTodo || arts.length <= lim;
+  const shown = todo ? arts : arts.slice(0, lim);
+  const cols = window.innerWidth >= 900 ? 8 : 4;
+  const vacias = (cols - (shown.length % cols)) % cols;
+  const etiqueta = { gris: 'sin precio de compra', rosa: 'aún sin recuperar', naranja: 'más de la mitad recuperada', oro: 'ya se ha pagado sola' };
+  return '<div class="retro"><div class="retro-grid">' + shown.map((a) => {
+    const s0 = st[a.id]; const r = rareza(s0.pct); const n = unidadesActivas(a).length;
+    return '<button class="slot r-' + r + '" data-a="ver-art" data-id="' + a.id + '" aria-label="' + esc(a.nombre) + ', ' + n + ' unidades, ' + etiqueta[r] + '"><span class="slot-img" data-foto="' + (a.fotoPix || '') + '">' + (a.fotoPix ? '' : eqIco(a.cat)) + '</span>' + (n > 1 ? '<span class="slot-n">×' + n + '</span>' : '') + '</button>';
+  }).join('') + '<span class="slot vacia" aria-hidden="true"></span>'.repeat(vacias) + '</div>' +
+    (arts.length > lim ? '<button class="retro-btn" data-a="inv-todo">' + (todo ? 'Ver menos' : 'Ver todo el inventario (' + arts.length + ')') + '</button>' : '') +
+    '<div class="retro-ley"><span><i class="lg r-gris"></i>sin precio</span><span><i class="lg r-rosa"></i>recuperando</span><span><i class="lg r-naranja"></i>+50 %</span><span><i class="lg r-oro"></i>pagado</span></div></div>';
+}
 function vEquipo() {
   const { st, sp } = statsEquipo();
   const f = UI.eqCat || 'todos';
@@ -815,6 +843,7 @@ function vEquipo() {
     (S.packs.length ? '<div class="card" style="padding:6px 12px;margin-bottom:12px"><b style="padding:8px 4px 0">Packs</b>' + packs + '</div>' : '') +
     '<div class="row" style="margin-bottom:8px"><input class="in f1" placeholder="Buscar equipo" value="' + esc(UI.eqQ || '') + '" data-in="eqQ" aria-label="Buscar equipo"><select class="in" style="width:auto" data-in="eqOrden" aria-label="Ordenar"><option value="cat"' + (o === 'cat' ? ' selected' : '') + '>Por categoría</option><option value="rent"' + (o === 'rent' ? ' selected' : '') + '>Más rentable</option><option value="ing"' + (o === 'ing' ? ' selected' : '') + '>Más generado</option><option value="coste"' + (o === 'coste' ? ' selected' : '') + '>Más caro</option><option value="uso"' + (o === 'uso' ? ' selected' : '') + '>Más usado</option></select></div>' +
     '<div class="chips" style="margin-bottom:8px">' + ['todos'].concat(CATS_EQ).map((c) => '<button class="chip ' + (f === c ? 'on' : '') + '" data-a="eqcat" data-c="' + c + '">' + (c === 'todos' ? 'Todo' : c) + '</button>').join('') + '</div>' +
+    (arts.length ? inventarioRetro(arts, st) : '') +
     '<div class="card" style="padding:6px 12px" id="eq-res">' + (html || '<span class="sub" style="padding:12px 0">Nada con este filtro.</span>') + '</div>';
 }
 function vArticulo(id) {
@@ -826,6 +855,7 @@ function vArticulo(id) {
     '<div class="row wrap"><label class="f" style="flex:2 1 160px">Categoría<select class="in" data-ex="cat">' + CATS_EQ.map((c) => '<option' + (a.cat === c ? ' selected' : '') + '>' + c + '</option>').join('') + '</select></label><label class="f" style="flex:1 1 100px">Precio alquiler €/día<input class="in" inputmode="decimal" value="' + (a.precioDia ? String(a.precioDia).replace('.', ',') : '') + '" data-ex="precioDia"></label></div>' +
     '<span class="sub" style="font-size:12px">' + (a.precioDia ? '1 día ' + eur(precioAlquiler(a.precioDia, 1)) + ' · 2 días ' + eur(precioAlquiler(a.precioDia, 2)) + ' · 3 días ' + eur(precioAlquiler(a.precioDia, 3)) + ' (por unidad)' : 'Sin precio: no se alquila suelto') + '</span>' +
     '<label class="f">Notas<input class="in" value="' + esc(a.nota || '') + '" data-ex="nota"></label>' +
+    '<div class="row"><span class="slot r-' + rareza(s.pct) + '" style="width:72px;height:72px;flex:0 0 auto"><span class="slot-img" data-foto="' + (a.fotoPix || '') + '">' + (a.fotoPix ? '' : eqIco(a.cat)) + '</span></span><label class="btn ghost f1" style="cursor:pointer">' + ico('cam', 16) + (a.foto ? 'Cambiar foto' : 'Hacer o subir foto') + '<input type="file" accept="image/*" capture="environment" hidden data-file="art"></label></div>' +
     '<div class="row"><button class="btn danger sm" data-a="borrar-art" data-id="' + a.id + '">Borrar</button><a href="#equipo" class="btn pri f1">Guardar</a></div></div>' +
     '<div class="card"><b>Rentabilidad</b>' + barraPct(s.pct) + ((a.unidades || []).filter((u) => !u.coste).length && (a.unidades || []).some((u) => u.coste) ? '<span class="sub" style="font-size:12px;color:var(--warn)">Faltan precios de ' + (a.unidades || []).filter((u) => !u.coste).length + ' unidades: el porcentaje sale más alto de lo real.</span>' : '') +
     '<div class="between"><span class="sub">Costó</span><b class="num">' + eur(s.coste) + '</b></div><div class="between"><span class="sub">Generado en alquileres</span><b class="num">' + eur(s.ing) + '</b></div>' + (s.ventas ? '<div class="between"><span class="sub">Vendido por</span><b class="num">' + eur(s.ventas) + '</b></div>' : '') +
@@ -1026,7 +1056,7 @@ async function sincronizar() {
     const remotos = new Set((await G.list()).map((x) => x.name));
     const locales = await DB.keys('fotos');
     for (const k of locales) { const n = 'foto-' + k + '.enc'; if (!remotos.has(n)) { const b = await DB.get('fotos', k); await G.put(n, await cifrar(new Uint8Array(b), UI.pass)); } }
-    const usadas = new Set([S.ajustes.cabeceraFoto, ...S.movimientos.map((m) => m.foto), ...S.vehiculos.map((v) => v.foto)].filter(Boolean));
+    const usadas = new Set([S.ajustes.cabeceraFoto, ...S.movimientos.map((m) => m.foto), ...S.vehiculos.map((v) => v.foto), ...S.equipo.flatMap((a) => [a.foto, a.fotoPix])].filter(Boolean));
     const todos = await G.list();
     for (const id of usadas) { if (!locales.includes(id)) { const r = todos.find((x) => x.name === 'foto-' + id + '.enc'); if (r) { const t = await G.download(r.id); await DB.put('fotos', id, await descifrar(t, UI.pass)); } } }
     guardar(); render(); toast('Sincronizado');
@@ -1132,7 +1162,8 @@ document.addEventListener('click', async (e) => {
     case 'borrar-factura': if (confirm(F_EDIT.estado === 'borrador' ? '¿Borrar este borrador?' : 'Esta factura ya está ' + F_EDIT.estado + '. Bórrala solo si es una prueba o un error. ¿Borrar?')) { borrar('facturas', F_EDIT.id); guardar(); location.hash = 'facturas'; } break;
     case 'rectificar': { const r = { id: uid(), num: siguienteRect(), fecha: hoy(), cliente: F_EDIT.cliente, lineas: JSON.parse(JSON.stringify(F_EDIT.lineas)), estado: 'borrador', rectificaDe: F_EDIT.id, versiones: [] }; S.facturas.push(touch(r)); guardar(); location.hash = 'factura/' + r.id; toast('Rectificativa ' + r.num + ' creada'); break; }
     case 'nuevo-cliente': { const c = touch({ id: uid(), nombre: '', nif: '', dir1: '', dir2: '', correos: [] }); S.clientes.push(c); const desde = el.dataset.desde; UI.volver = desde ? 'factura/' + desde : null; if (desde) { const ff = S.facturas.find((x) => x.id === desde); if (ff) { ff.cliente = c.id; touch(ff); } } guardar(); location.hash = 'cliente/' + c.id; break; }
-    case 'ver-art': location.hash = 'art/' + id; break;
+    case 'ver-art': if (el.classList.contains('slot') && !matchMedia('(prefers-reduced-motion: reduce)').matches) { el.classList.add('jump'); setTimeout(() => { location.hash = 'art/' + id; }, 260); } else location.hash = 'art/' + id; break;
+    case 'inv-todo': UI.invTodo = !UI.invTodo; render(); break;
     case 'ver-pack': location.hash = 'pack/' + id; break;
     case 'eqcat': UI.eqCat = el.dataset.c; render(); break;
     case 'nuevo-art': { const a = touch({ id: uid(), nombre: '', cat: UI.eqCat && UI.eqCat !== 'todos' ? UI.eqCat : 'Cámaras', precioDia: 0, nota: '', unidades: [{ id: uid(), fecha: '', coste: 0, estado: 'activo' }] }); S.equipo.push(a); guardar(); location.hash = 'art/' + a.id; break; }
@@ -1249,10 +1280,16 @@ document.addEventListener('change', async (e) => {
     const file = el.files && el.files[0]; if (!file) return;
     if (d.file === 'ticket') { G_EDIT.fotoNueva = await comprimir(file); pintarGasto(); return; }
     if (d.file === 'cabecera') { const id = 'cab-' + uid(); await DB.put('fotos', id, await fileBytes(file)); S.ajustes.cabeceraFoto = id; touch(S.ajustes); guardar(); toast('Cabecera guardada'); render(); return; }
+    if (d.file === 'art') {
+      const a = artDe(ruta().id); const id = 'art-' + uid(); await DB.put('fotos', id, await comprimir(file, 700));
+      const pix = 'pix-' + uid(); await DB.put('fotos', pix, await comprimir(file, 56)); a.foto = id; a.fotoPix = pix; touch(a); guardar(); render(); toast('Foto guardada'); return;
+    }
     if (d.file === 'veh') { const id = 'veh-' + uid(); await DB.put('fotos', id, await comprimir(file, 900)); const v = veh(d.id); v.foto = id; touch(v); guardar(); render(); return; }
     if (d.file === 'import') { try { await importar(JSON.parse(await file.text())); } catch (err) { toast('No se pudo leer: ' + err.message); } el.value = ''; return; }
   }
 });
+let anchoPC = window.innerWidth >= 900;
+window.addEventListener('resize', () => { const pc = window.innerWidth >= 900; if (pc !== anchoPC) { anchoPC = pc; if (ruta().v === 'equipo') render(); } });
 window.addEventListener('hashchange', () => { cerrarHoja(); render(); window.scrollTo(0, 0); });
 
 /* ---------- Arranque ---------- */
