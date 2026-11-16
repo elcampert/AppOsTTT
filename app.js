@@ -13,7 +13,9 @@ const diasEntre = (a, b) => Math.round((parseD(b) - parseD(a)) / 86400000);
 const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
 const MESES_C = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 const r2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
+let PRIV = false; try { PRIV = localStorage.getItem('mc-privado') === '1'; } catch (e) { }
 function eur(n, sign) {
+  if (PRIV) return '••••• €';
   const neg = n < 0; const v = Math.abs(r2(n)).toFixed(2).split('.');
   return (neg ? '−' : sign && n > 0 ? '+' : '') + v[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.') + ',' + v[1] + ' €';
 }
@@ -30,8 +32,10 @@ const I = {
   list: '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
   file: '<path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/>',
-  tax: '<path d="M7 10v11M17 10v11M7 15.5h10"/><path d="M7 10C4.5 9 3.5 6 4.5 2.5 5.5 5 6.5 6.5 8.5 7.5"/><path d="M17 10c2.5-1 3.5-4 2.5-7.5-1 2.5-2 4-4 5"/>',
+  tax: '<path d="M7 6v15M17 6v15M7 14h10"/><path fill="currentColor" stroke-width="1" d="M7 8C5 7.5 3.8 5.5 3.5 2.5C2 5.5 2.5 10 7 12z"/><path fill="currentColor" stroke-width="1" d="M17 8c2-.5 3.2-2.5 3.5-5.5 1.5 3 1 7.5-3.5 9.5z"/>',
   gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
+  eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+  eyeoff: '<path d="M3 3l18 18M10.6 5.1A10 10 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3.2 4.2M6.6 6.6C3.8 8.4 2 12 2 12s3.5 7 10 7c1.8 0 3.4-.5 4.8-1.3M9.9 9.9a3 3 0 0 0 4.2 4.2"/>',
   bell: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
   left: '<path d="m15 18-6-6 6-6"/>', right: '<path d="m9 18 6-6-6-6"/>',
   x: '<path d="M18 6 6 18M6 6l12 12"/>',
@@ -62,7 +66,7 @@ const CAT_ICO = {
   telefono: '<rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/>',
   taller: '<path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.4-.6-.6-2.4z"/>',
   varios: '<path d="M6 7h12l1 14H5z"/><path d="M9 10V6a3 3 0 0 1 6 0v4"/>',
-  hacienda: '<path d="M7 10v11M17 10v11M7 15.5h10"/><path d="M7 10C4.5 9 3.5 6 4.5 2.5 5.5 5 6.5 6.5 8.5 7.5"/><path d="M17 10c2.5-1 3.5-4 2.5-7.5-1 2.5-2 4-4 5"/>',
+  hacienda: '<path d="M7 6v15M17 6v15M7 14h10"/><path fill="currentColor" stroke-width="1" d="M7 8C5 7.5 3.8 5.5 3.5 2.5C2 5.5 2.5 10 7 12z"/><path fill="currentColor" stroke-width="1" d="M17 8c2-.5 3.2-2.5 3.5-5.5 1.5 3 1 7.5-3.5 9.5z"/>',
   perdido: '<path d="M12 3 2 20h20z"/><path d="M12 10v4M12 17h.01"/>',
   ahorro: '<path d="M5 11a7 6 0 0 1 13-2l2-1v4l-1 1a7 6 0 0 1-3 4v3h-3v-2h-3v2H7v-3a6 6 0 0 1-2-6z"/><path d="M15 10h.01"/>',
   ingreso: '<path d="M12 3v18M7 8l5-5 5 5"/>'
@@ -267,7 +271,7 @@ function render() {
   const { v, id } = ruta();
   const sec = v === 'factura' || v === 'cliente' || v === 'presupuesto' ? 'facturas' : v === 'ajustes' ? 'ajustes' : v;
   $('#side').innerHTML = '<div class="logo">MIS CUENTAS</div>' + NAV.map(([k, l, i]) => '<a href="#' + k + '" class="' + (sec === k ? 'on' : '') + '">' + ico(i) + l + '</a>').join('') +
-    '<a href="#" data-a="nuevo-gasto">' + ico('plus') + 'Apuntar gasto</a><div style="flex:1"></div><a href="#ajustes" class="' + (sec === 'ajustes' ? 'on' : '') + '">' + ico('gear') + 'Ajustes</a>' +
+    '<a href="#" data-a="nuevo-gasto">' + ico('plus') + 'Apuntar gasto</a><a href="#" data-a="privado">' + ico(PRIV ? 'eyeoff' : 'eye') + (PRIV ? 'Mostrar cantidades' : 'Ocultar cantidades') + '</a><div style="flex:1"></div><a href="#ajustes" class="' + (sec === 'ajustes' ? 'on' : '') + '">' + ico('gear') + 'Ajustes</a>' +
     '<button class="btn ghost sm" data-a="sync">' + ico('sync', 16) + 'Sincronizar' + (S.ajustes.ultimaSync ? ' · ' + haceCuanto(S.ajustes.ultimaSync) : '') + '</button>';
   $('#bottom').innerHTML = NAV.slice(0, 2).map(([k, l, i]) => '<a href="#' + k + '" class="' + (sec === k ? 'on' : '') + '">' + ico(i, 22) + l + '</a>').join('') +
     '<a href="#" class="fab" data-a="nuevo-gasto" aria-label="Apuntar gasto">' + ico('plus', 26) + '</a>' +
@@ -302,8 +306,9 @@ function vInicio() {
   const [ma, mb] = rango('mes', hd.slice(0, 8) + '01'); const rm = resumen(ma, mb);
   Object.entries(S.ajustes.limites).forEach(([c, lim]) => { if (lim > 0 && (rm.porCat[c] || 0) >= lim * 0.85) avisos.push('<div class="item"><span class="dot" style="background:var(--warn)"></span><span class="f1">' + esc(cat(c).n) + ': ' + eur(rm.porCat[c] || 0) + ' de ' + eur(lim) + ' este mes</span></div>'); });
   if (pl && diasEntre(hd, isoDate(pl.f)) <= 15) avisos.push('<a class="item" href="#hacienda"><span class="dot" style="background:var(--ac)"></span><span class="f1">Plazo de Hacienda (' + pl.l + ') el ' + fechaCorta(isoDate(pl.f)) + '</span></a>');
-  return '<div class="top"><div><div class="sub">Hola' + (S.ajustes.nombre ? ', ' + esc(S.ajustes.nombre.split(' ')[0]) : '') + '</div><div class="row"><button class="btn icon sm" data-a="ref" data-d="-1" aria-label="Anterior">' + ico('left', 18) + '</button><h1 style="font-size:22px;text-transform:capitalize">' + esc(nombre) + '</h1><button class="btn icon sm" data-a="ref" data-d="1" aria-label="Siguiente">' + ico('right', 18) + '</button></div></div>' +
-    '<div class="row"><button class="btn icon" data-a="sync" aria-label="Sincronizar" id="btn-sync">' + ico('sync') + '</button><a href="#ajustes" class="btn icon" aria-label="Ajustes">' + ico('gear') + '</a></div></div>' +
+  return '<div class="top" style="padding-bottom:4px"><div class="sub">Hola' + (S.ajustes.nombre ? ', ' + esc(S.ajustes.nombre.split(' ')[0]) : '') + '</div>' +
+    '<div class="row"><button class="btn icon" data-a="privado" aria-label="' + (PRIV ? 'Mostrar cantidades' : 'Ocultar cantidades') + '" aria-pressed="' + PRIV + '">' + ico(PRIV ? 'eyeoff' : 'eye') + '</button><button class="btn icon" data-a="sync" aria-label="Sincronizar" id="btn-sync">' + ico('sync') + '</button><a href="#ajustes" class="btn icon" aria-label="Ajustes">' + ico('gear') + '</a></div></div>' +
+    '<div class="row" style="margin-bottom:14px"><button class="btn icon sm" data-a="ref" data-d="-1" aria-label="Periodo anterior">' + ico('left', 18) + '</button><h1 class="f1" style="font-size:22px;text-transform:capitalize;text-align:center">' + esc(nombre) + '</h1><button class="btn icon sm" data-a="ref" data-d="1" aria-label="Periodo siguiente">' + ico('right', 18) + '</button></div>' +
     (S.movimientos.length + S.facturas.length === 0 ? '<div class="infobox" style="margin-bottom:14px">Todavía no hay datos. Ve a <a href="#ajustes">Ajustes › Datos</a> e importa el archivo <b>datos-2026.json</b> con tu Excel, tus datos fiscales y la cabecera de las facturas.</div>' : '') +
     '<div class="seg" style="margin-bottom:14px">' + [['mes', 'Mes'], ['trim', 'Trimestre'], ['anio', 'Año']].map(([k, l]) => '<button class="' + (UI.periodo === k ? 'on' : '') + '" data-a="periodo" data-p="' + k + '">' + l + '</button>').join('') + '</div>' +
     '<div class="grid home-grid">' +
@@ -349,7 +354,7 @@ function grafico(r, a) {
     for (let k = 5; k >= 0; k--) { const d = new Date(ref.getFullYear(), ref.getMonth() - k, 1); const [ma, mb] = rango('mes', isoDate(d)); meses.push({ l: MESES_C[d.getMonth()], r: resumen(ma, mb) }); }
     const max = Math.max(1, ...meses.map((m) => m.r.gastado));
     const cs = [...new Set(meses.flatMap((m) => Object.keys(m.r.porCat)))];
-    body = '<div class="months">' + meses.map((m, i) => '<div><span class="sub" style="font-size:10px;text-align:center">' + Math.round(m.r.gastado) + '</span><div class="stack" style="animation-delay:' + i * 60 + 'ms;height:' + Math.round(m.r.gastado / max * 118) + 'px">' +
+    body = '<div class="months">' + meses.map((m, i) => '<div><span class="sub" style="font-size:10px;text-align:center">' + (PRIV ? '•••' : Math.round(m.r.gastado)) + '</span><div class="stack" style="animation-delay:' + i * 60 + 'ms;height:' + Math.round(m.r.gastado / max * 118) + 'px">' +
       cs.map((c) => m.r.porCat[c] ? '<div style="flex:' + m.r.porCat[c].toFixed(1) + ' 1 0;min-height:2px;background:' + cat(c).col + '"></div>' : '').join('') + '</div></div>').join('') + '</div>' +
       '<div class="row" style="gap:8px">' + meses.map((m, i) => '<span class="f1 sub" style="text-align:center;font-size:11px;' + (i === 5 ? 'color:var(--tx);font-weight:600' : '') + '">' + m.l + '</span>').join('') + '</div>';
   }
@@ -521,7 +526,10 @@ function vFactura(id) {
   const gb = gastos.reduce((s, m) => s + movCalc(m).base, 0);
   const estTxt = { borrador: 'Borrador', enviada: 'Enviada · pendiente de cobro', cobrada: 'Cobrada el ' + fechaES(f.fechaCobro) }[f.estado];
   const editable = true;
-  return '<div class="top"><div class="row"><a href="#facturas" class="btn icon" aria-label="Volver">' + ico('left') + '</a><div><h1 style="font-size:22px">' + (f.rectificaDe ? 'Rectificativa ' : 'Factura ') + esc(f.num) + '</h1><div class="sub">' + estTxt + ' · plazo máximo ' + fechaES(venceFactura(f)) + '</div></div></div></div>' +
+  const orden = S.facturas.slice().sort((a, b) => a.fecha.localeCompare(b.fecha) || a.num.localeCompare(b.num, 'es', { numeric: true }));
+  const ix = orden.findIndex((x) => x.id === f.id); const ant = orden[ix - 1], sig = orden[ix + 1];
+  const nav = '<div class="row" style="gap:6px">' + (ant ? '<a href="#factura/' + ant.id + '" class="btn icon" aria-label="Factura anterior: ' + esc(ant.num) + '">' + ico('left') + '</a>' : '<span class="btn icon" style="opacity:.3" aria-hidden="true">' + ico('left') + '</span>') + '<span class="sub" style="min-width:64px;text-align:center">' + (ix + 1) + ' de ' + orden.length + '</span>' + (sig ? '<a href="#factura/' + sig.id + '" class="btn icon" aria-label="Factura siguiente: ' + esc(sig.num) + '">' + ico('right') + '</a>' : '<span class="btn icon" style="opacity:.3" aria-hidden="true">' + ico('right') + '</span>') + '</div>';
+  return '<div class="top wrap"><div class="row"><a href="#facturas" class="btn icon" aria-label="Volver a facturas">' + ico('x') + '</a><div><h1 style="font-size:22px">' + (f.rectificaDe ? 'Rectificativa ' : 'Factura ') + esc(f.num) + '</h1><div class="sub">' + estTxt + ' · plazo máximo ' + fechaES(venceFactura(f)) + '</div></div></div>' + nav + '</div>' +
     (f.estado !== 'borrador' ? '<div class="warnbox" style="margin-bottom:12px">Esta factura ya está enviada. Si la cambias se guarda una versión nueva (' + 'V' + ((f.versiones || []).length + 1) + ' guardada). Lo correcto es hacer una rectificativa. <button class="btn sm ghost" data-a="rectificar">Hacer rectificativa</button></div>' : '') +
     (faltanDatos().length ? '<div class="warnbox" style="margin-bottom:12px">Faltan tus datos en Ajustes: ' + faltanDatos().join(', ') + '. Sin ellos la factura sale incompleta. <a href="#ajustes" class="btn sm ghost">Ir a Ajustes</a></div>' : '') +
     (f.rectificaDe ? '<div class="infobox" style="margin-bottom:12px">Rectifica la factura ' + esc((S.facturas.find((x) => x.id === f.rectificaDe) || {}).num || '') + '.</div>' : '') +
@@ -921,6 +929,7 @@ document.addEventListener('click', async (e) => {
         '<div class="infobox">Es lo que te queda de lo apuntado en la app, no tu saldo del banco. Para que sea exacto, cuando pagues el 303 o el 130 márcalo como pagado en Hacienda.' + (pend ? '<br><br>Además tienes <b>' + eur(pend) + '</b> en facturas pendientes de cobro que aún no cuentan aquí.' : '') + '</div>');
       break;
     }
+    case 'privado': PRIV = !PRIV; try { localStorage.setItem('mc-privado', PRIV ? '1' : '0'); } catch (err) { } UI.shown = UI.target || 0; render(); toast(PRIV ? 'Cantidades ocultas' : 'Cantidades visibles'); break;
     case 'sync': sincronizar(); break;
     case 'backup': download('mis-cuentas-copia-' + hoy() + '.json', JSON.stringify(S), 'application/json'); break;
     case 'borrar-todo': if (confirm('¿Borrar TODOS los datos de este dispositivo? No afecta a la copia de Drive.') && confirm('¿Seguro? No se puede deshacer.')) { S = estadoInicial(); guardar(); render(); } break;
